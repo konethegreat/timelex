@@ -59,7 +59,7 @@ async fn the_completeness_check_really_detects_an_unprotected_table() {
 #[tokio::test]
 async fn without_a_tenant_nothing_is_visible() {
     let Some(db) = setup().await else { return };
-    let (raw, tenants) = db.identity_pool().await;
+    let (raw, tenants) = db.service_pool().await;
     seed_tenant(&tenants, "firm-a", 2).await;
     for table in ["tenants", "users", "user_roles", "api_keys"] {
         let n: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM identity.{table}"))
@@ -74,7 +74,7 @@ async fn without_a_tenant_nothing_is_visible() {
 #[tokio::test]
 async fn a_malformed_tenant_setting_fails_closed() {
     let Some(db) = setup().await else { return };
-    let (raw, _) = db.identity_pool().await;
+    let (raw, _) = db.service_pool().await;
     let mut tx = raw.begin().await.unwrap();
     sqlx::query("SELECT set_config('timelex.tenant_id', 'not-a-uuid', true)")
         .execute(&mut *tx)
@@ -91,7 +91,7 @@ async fn a_malformed_tenant_setting_fails_closed() {
 #[tokio::test]
 async fn the_tenant_does_not_leak_to_the_next_transaction_on_the_same_connection() {
     let Some(db) = setup().await else { return };
-    let (_, tenants) = db.identity_pool().await;
+    let (_, tenants) = db.service_pool().await;
     let a = seed_tenant(&tenants, "firm-a", 1).await;
     // A pool of one connection: the next transaction is guaranteed to reuse the same connection.
     let single = sqlx::postgres::PgPoolOptions::new()
@@ -127,7 +127,7 @@ async fn db_options(db: &common::TestDb) -> sqlx::postgres::PgConnectOptions {
 #[tokio::test]
 async fn writing_a_row_for_another_tenant_is_rejected() {
     let Some(db) = setup().await else { return };
-    let (_, tenants) = db.identity_pool().await;
+    let (_, tenants) = db.service_pool().await;
     let a = seed_tenant(&tenants, "firm-a", 1).await;
     let b = seed_tenant(&tenants, "firm-b", 1).await;
     // Acting as A, try to create a user inside B.
@@ -147,7 +147,7 @@ async fn writing_a_row_for_another_tenant_is_rejected() {
 #[tokio::test]
 async fn update_and_delete_cannot_reach_another_tenants_rows() {
     let Some(db) = setup().await else { return };
-    let (_, tenants) = db.identity_pool().await;
+    let (_, tenants) = db.service_pool().await;
     let a = seed_tenant(&tenants, "firm-a", 1).await;
     let b = seed_tenant(&tenants, "firm-b", 2).await;
     let mut tx = tenants.begin(a).await.unwrap();
@@ -180,7 +180,7 @@ async fn update_and_delete_cannot_reach_another_tenants_rows() {
 #[tokio::test]
 async fn a_row_can_never_reference_a_user_of_another_tenant() {
     let Some(db) = setup().await else { return };
-    let (_, tenants) = db.identity_pool().await;
+    let (_, tenants) = db.service_pool().await;
     let a = seed_tenant(&tenants, "firm-a", 1).await;
     let b = seed_tenant(&tenants, "firm-b", 1).await;
     // B's user id, read as B.
@@ -215,7 +215,7 @@ async fn a_row_can_never_reference_a_user_of_another_tenant() {
 #[tokio::test]
 async fn the_service_role_has_only_the_privileges_the_migration_grants() {
     let Some(db) = setup().await else { return };
-    let (_, tenants) = db.identity_pool().await;
+    let (_, tenants) = db.service_pool().await;
     let a = seed_tenant(&tenants, "firm-a", 1).await;
 
     // A key's hash, scopes, owner and expiry are immutable: one statement each, each in its own
@@ -259,7 +259,7 @@ fn tenants_never_see_each_others_rows() {
     // sees exactly that firm's rows in every table, and a transaction acting for an unknown firm sees none.
     let rt = tokio::runtime::Runtime::new().unwrap();
     let Some(db) = rt.block_on(setup()) else { return };
-    let (_, tenants) = rt.block_on(db.identity_pool());
+    let (_, tenants) = rt.block_on(db.service_pool());
     let mut runner = TestRunner::new(Config {
         cases: 24,
         ..Config::default()
@@ -308,7 +308,7 @@ fn rust_validation_and_database_constraints_agree() {
     // agree exactly in both directions.
     let rt = tokio::runtime::Runtime::new().unwrap();
     let Some(db) = rt.block_on(setup()) else { return };
-    let (_, tenants) = rt.block_on(db.identity_pool());
+    let (_, tenants) = rt.block_on(db.service_pool());
     let firm = rt.block_on(seed_tenant(&tenants, "agreement", 0));
     let rust_accepted_emails = AtomicUsize::new(0);
     let rust_accepted_slugs = AtomicUsize::new(0);

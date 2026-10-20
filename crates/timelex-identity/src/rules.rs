@@ -13,6 +13,28 @@ use crate::names::{validate_name, Email, TenantSlug, MAX_DISPLAY_NAME, MAX_KEY_N
 use crate::role::{Permission, Role, RoleSet};
 use crate::status::UserStatus;
 
+/// Fail unless `permissions` contains `needed`. The one place the "does the caller hold X" question is asked.
+pub fn require_permission(
+    permissions: &BTreeSet<Permission>,
+    needed: Permission,
+) -> Result<(), IdentityError> {
+    if permissions.contains(&needed) {
+        Ok(())
+    } else {
+        Err(IdentityError::PermissionDenied(needed.as_str()))
+    }
+}
+
+/// What an API key may do *right now*: its scopes, limited to what its owner's roles currently grant.
+///
+/// A key's scopes are fixed when it is issued, but the owner's roles can shrink afterwards (an admin
+/// is demoted, a fee earner becomes an auditor). Intersecting at every request means a role change
+/// takes effect on existing keys at once, without hunting them down.
+pub fn effective_permissions(scopes: &BTreeSet<Permission>, owner_roles: &RoleSet) -> BTreeSet<Permission> {
+    let granted = owner_roles.permissions();
+    scopes.intersection(&granted).copied().collect()
+}
+
 /// A request to create a firm and its first administrator, as received from a platform operator.
 #[derive(Debug, Clone, Copy)]
 pub struct NewTenantRequest<'a> {
@@ -93,9 +115,7 @@ pub struct ValidatedKey {
 /// 4. the name is 1 to 100 characters;
 /// 5. any expiry is in the future.
 pub fn check_key_issuance(req: &KeyIssuanceRequest<'_>) -> Result<ValidatedKey, IdentityError> {
-    if !req.actor_permissions.contains(&Permission::KeysManage) {
-        return Err(IdentityError::PermissionDenied(Permission::KeysManage.as_str()));
-    }
+    require_permission(req.actor_permissions, Permission::KeysManage)?;
     if req.owner_status != UserStatus::Active {
         return Err(IdentityError::KeyOwnerNotActive);
     }
@@ -360,6 +380,42 @@ mod tests {
         assert_eq!(check_key_issuance(&r), Err(IdentityError::ExpiryInPast));
         r.expires_at = Some(now() + Duration::seconds(1));
         assert!(check_key_issuance(&r).is_ok());
+    }
+
+    // --- permission helpers ---
+
+    #[test]
+    fn require_permission_names_the_missing_permission() {
+        let have = perms(&[Role::FeeEarner]);
+        assert_eq!(require_permission(&have, Permission::TimeWrite), Ok(()));
+        assert_eq!(
+            require_permission(&have, Permission::KeysManage),
+            Err(IdentityError::PermissionDenied("keys:manage"))
+        );
+        assert!(require_permission(&BTreeSet::new(), Permission::TimeRead).is_err());
+    }
+
+    #[test]
+    fn effective_permissions_are_scopes_limited_by_current_roles() {
+        let scopes = BTreeSet::from([Permission::TimeRead, Permission::UsersManage]);
+        let admin = RoleSet::new([Role::Admin]).unwrap();
+        assert_eq!(effective_permissions(&scopes, &admin), scopes);
+        // Demoted to auditor: UsersManage disappears from the same key at once.
+        let auditor = RoleSet::new([Role::Auditor]).unwrap();
+        assert_eq!(
+            effective_permissions(&scopes, &auditor),
+            BTreeSet::from([Permission::TimeRead])
+        );
+        // No roles left: the key can do nothing.
+        assert!(effective_permissions(&scopes, &RoleSet::default()).is_empty());
+    }
+
+    #[test]
+    fn effective_permissions_never_exceed_the_scopes() {
+        // A powerful owner with a narrow key: the key stays narrow.
+        let scopes = BTreeSet::from([Permission::TimeRead]);
+        let admin = RoleSet::new([Role::Admin]).unwrap();
+        assert_eq!(effective_permissions(&scopes, &admin), scopes);
     }
 
     // --- last admin ---

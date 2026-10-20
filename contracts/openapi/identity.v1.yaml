@@ -1,0 +1,282 @@
+# Written by Kone Tshivhinda & Claude
+# Identity service contract v1 (draft). Contract-first: this file leads the code (ADR-0001).
+# Rules behind it: crates/timelex-identity. Data: services/identity/migrations. Design: ADR-0011.
+openapi: 3.1.0
+info:
+  title: TimeLex Identity
+  version: 0.1.0
+  summary: Tenants, API keys and authentication (pre-alpha).
+  description: |
+    Pre-alpha. This version covers four operations: create a firm, issue an API key, revoke an API key,
+    and authenticate a presented key. Users, roles and SSO come later (see the service README).
+
+    **Tenant comes from the credential, never from the request.** Every operation except `createTenant`
+    and `authenticate` acts for the firm that owns the caller's API key.
+
+    **Secrets.** An API key's token is returned exactly once, when it is created. It is never stored
+    (only its SHA-256 hash is) and cannot be retrieved again. Send tokens in a request *body* or an
+    `Authorization` header, never in a URL.
+
+    **Idempotency (not implemented yet).** ADR-0010 requires an `Idempotency-Key` on mutating routes.
+    The header is accepted and ignored in 0.1.0. Replaying `createTenant` or `issueApiKey` cannot return
+    the original token a second time, so a real replay policy needs a design decision first.
+
+    **Callers.** `createTenant` is for a platform operator. `authenticate` is internal, called by the
+    gateway only. Both are protected by the gateway's service identity (task P1-04), not by a tenant key.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8081
+    description: Local development (the gateway fronts this in every other environment)
+paths:
+  /v1/tenants:
+    post:
+      operationId: createTenant
+      summary: Create a firm and its first administrator
+      description: |
+        Creates the firm, its first admin (active, role `admin`) and an initial admin API key, in one
+        transaction. Platform operators only. There are no passwords: the returned key is the first
+        admin's credential until single sign-on exists.
+      security: [{ operatorKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantRequest" }
+      responses:
+        "201":
+          description: Firm created. The token in `initialApiKey` is shown only now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateTenantResponse" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: The slug is already taken.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /v1/api-keys:
+    post:
+      operationId: issueApiKey
+      summary: Issue an API key
+      description: |
+        Requires `keys:manage`. The key acts as `userId` (default: the caller). Its scopes must be a
+        subset of that user's permissions, so a key can never do more than its owner. The owner must be
+        an active user. An agent (machine) user can never hold `users:manage`, `keys:manage` or
+        `settings:manage`. The firm is the caller's firm; a `userId` from another firm is reported as not
+        found.
+      security: [{ apiKey: [] }]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueApiKeyRequest" }
+      responses:
+        "201":
+          description: Key issued. The token is shown only now.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IssuedApiKey" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/api-keys/{keyId}/revoke:
+    post:
+      operationId: revokeApiKey
+      summary: Revoke an API key
+      description: |
+        Requires `keys:manage`. Takes effect immediately. Revoking is permanent; issue a new key to
+        rotate. A key id from another firm is reported as not found.
+      security: [{ apiKey: [] }]
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Uuid" }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/authenticate:
+    post:
+      operationId: authenticate
+      summary: Check a presented API key (internal, gateway only)
+      description: |
+        Resolves a token to the principal it acts as. Every failure (malformed, unknown, wrong secret,
+        revoked, expired, owner disabled, firm suspended) returns the same 401 body, so a caller learns
+        nothing about why. The reason is recorded in the audit log, not returned.
+        `permissions` is the key's scopes limited to what the owner's roles grant **now**, so removing a
+        role takes effect on existing keys immediately.
+      security: [{ serviceIdentity: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AuthenticateRequest" }
+      responses:
+        "200":
+          description: The key is valid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Principal" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Accepted and ignored in 0.1.0 (see the API description).
+      schema: { type: string, minLength: 1, maxLength: 128 }
+  responses:
+    Invalid:
+      description: A field failed validation. `detail` names the rule; it never echoes a secret.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing, malformed or unusable credentials. Always the same body.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: The caller lacks the permission this operation needs.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: No such object in the caller's firm (objects of other firms are indistinguishable from missing ones).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+    Uuid:
+      type: string
+      format: uuid
+    Role:
+      description: A job a user can hold. `agent` (a machine) cannot be combined with any other role.
+      type: string
+      enum: [admin, fee_earner, billing, auditor, agent]
+    Permission:
+      description: One thing that can be done. Also the vocabulary of API-key scopes.
+      type: string
+      enum: [users:read, users:manage, keys:manage, settings:manage, time:read, time:write, billing:read, billing:write, audit:read, capture:write]
+    TenantSlug:
+      description: A firm's short public name. 3 to 40 characters.
+      type: string
+      pattern: "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$"
+      examples: [example-attorneys]
+    CreateTenantRequest:
+      type: object
+      required: [slug, displayName, adminEmail, adminDisplayName]
+      additionalProperties: false
+      properties:
+        slug: { $ref: "#/components/schemas/TenantSlug" }
+        displayName: { type: string, minLength: 1, maxLength: 200, examples: [Example Attorneys Inc] }
+        adminEmail:
+          description: Lowercase ASCII address; surrounding spaces and capitals are normalised. Use .example or .test addresses in tests.
+          type: string
+          maxLength: 254
+          examples: [partner@example-attorneys.example]
+        adminDisplayName: { type: string, minLength: 1, maxLength: 200, examples: [Pat Partner] }
+    CreateTenantResponse:
+      type: object
+      required: [tenantId, slug, adminUserId, initialApiKey]
+      properties:
+        tenantId: { $ref: "#/components/schemas/Uuid" }
+        slug: { $ref: "#/components/schemas/TenantSlug" }
+        adminUserId: { $ref: "#/components/schemas/Uuid" }
+        initialApiKey: { $ref: "#/components/schemas/IssuedApiKey" }
+    IssueApiKeyRequest:
+      type: object
+      required: [name, scopes]
+      additionalProperties: false
+      properties:
+        userId:
+          description: The user the key acts as. Defaults to the caller.
+          $ref: "#/components/schemas/Uuid"
+        name: { type: string, minLength: 1, maxLength: 100, examples: [capture connector] }
+        scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Permission" }
+        expiresAt:
+          description: Optional expiry; must be in the future.
+          type: string
+          format: date-time
+    IssuedApiKey:
+      type: object
+      required: [id, userId, name, token, prefix, scopes, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/Uuid" }
+        userId: { $ref: "#/components/schemas/Uuid" }
+        name: { type: string }
+        token:
+          description: "The full secret, shown once. Format `tlx_<32 hex tenant id>.<43 characters>`. Treat as a password."
+          type: string
+          minLength: 80
+          maxLength: 80
+        prefix:
+          description: First 8 characters of the secret part, for telling keys apart in lists.
+          type: string
+          minLength: 8
+          maxLength: 8
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+        expiresAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    AuthenticateRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token: { type: string, maxLength: 200, description: The presented API key. }
+    Principal:
+      type: object
+      required: [tenantId, userId, keyId, roles, permissions]
+      properties:
+        tenantId: { $ref: "#/components/schemas/Uuid" }
+        userId: { $ref: "#/components/schemas/Uuid" }
+        keyId: { $ref: "#/components/schemas/Uuid" }
+        roles:
+          type: array
+          items: { $ref: "#/components/schemas/Role" }
+        permissions:
+          description: The key's scopes limited to what the owner's roles grant now.
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: A tenant API key (`tlx_...`), verified by the gateway through `authenticate`.
+    operatorKey:
+      type: http
+      scheme: bearer
+      description: A platform-operator credential, held by whoever runs the platform. Enforced by the gateway (P1-04).
+    serviceIdentity:
+      type: http
+      scheme: bearer
+      description: Service-to-service identity for internal calls (P1-04).
