@@ -4,6 +4,36 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-20 (session 2): Step 1 research pass, no product code
+**Trigger:** research in `docs/research/` was partly unverified; Kone asked for the gaps to be closed from primary sources before building (Step 1), with a stop for review before P1-01 to P1-03.
+
+**Done**
+- **T0-L03 / T0-L04 (research 03):** read Part XII (rules 54.1, 54.6–54.15, 54.19, 54.20, 54.24, 54.34, 57) in the Acts Online republication of Notice 401 of 2018, the LPC advisory of 10 May 2024 with the court order, POPIA ss71, 72, 21, 22, and the Information Regulator's guidance-notes page. Listed ten software duties. Corrected: Part XII scope (54.1), retention clock (from last entry), audit-report citation (54.24 not 57.2), client-account content (agreed fee flag), payment methods (54.14.15); **s71 is narrower than we wrote**; added 54.9.2.1 (hosted records). Regulator's transfer guidance: not published, announced as planned.
+- **T0-L02 (new research 07):** public Anthropic terms, DPA, retention, ZDR, residency, usage policy, key types, workspaces, Workload Identity Federation. Drafted nine questions for Anthropic.
+- **P1-08 (new research 08, spike in `docs/research/spikes/p1-08-rmcp/`):** `rmcp` 3.6.0 serves 2026-07-28 statelessly with Tasks; 18 raw probes; defaults need configuration (Origin, session mode, required metadata).
+- **GhostPractice (research 01 §8):** 26-row claim register from the vendor's own pages and the acquirer's press release.
+- **Kits:** `docs/validation/interview-kit.md` and `demo-checklist.md` for T0-R01 and T0-B01.
+- ADR amendments **proposed** in 0003, 0004, 0005, 0007, 0009 (Decision text untouched). Threat model T19–T24 added. TASKS updated (P1-08 done server-side; new P1-15, T0-L05, T0-L06, T0-A03).
+
+**Findings that change plans**
+- **Anthropic has no African inference region** (`global` or `us` only); Fable-class models need 30-day retention and **cannot use ZDR**, which breaks the top rung of the escalation ladder for ZDR tenants.
+- **Workload Identity Federation** could let TimeLex hold no Anthropic secret; proposed as a second mode, waiting for Anthropic's written answer.
+- The usage policy treats **evaluating a worker's performance** as high-risk, which constrains per-fee-earner analytics.
+- GhostPractice is **not "Windows on-premise only"**: hosting is the firm's choice, the database is Microsoft SQL, remote-desktop and virtual-workstation access is listed, and **import/export is advertised**. The vendor is silent on an API. The owner opened a strategic review in July 2025 (unverified for 2026).
+- ClearCut's note that `rmcp` 3.5.1 spoke 2025-06-18 does not match the crate changelog or the spike (3.5.1 not tested).
+
+**Still unverified / open**
+- Part XII from the Gazette itself (we read a republication through a summarising tool; rules 54.2–54.5, 54.16–54.18, 54.21–54.23, 54.25–54.33, 55, 56 unread). POPIA text is from a commentary site, not the Gazette.
+- Anthropic's position on key custody and a vendor-run federation issuer; DPA coverage of POPIA; clause numbers as reported by our fetch tool.
+- Capterra facts (price, Windows) could not be re-checked (HTTP 403). GhostPractice export formats, licence terms, API.
+- `rmcp` client side, `tasks/update`, `tasks/cancel`, auth, load; the `Mcp-Name` rule for task methods.
+- Whether captured time or fee records count as "accounting records" under rule 54.9 (counsel).
+- Everything in the interview kit's hypotheses H1–H8: no interview has happened.
+
+**Plan impact:** none to phase order or gates. Phase 1 gets one extra task (P1-15) and Phase 1's MCP risk is lower; vault scope in P1-05 stays "stored key only" until Anthropic answers. Step 3 is not started.
+
+**Next:** Kone reviews Step 2 report; then P1-01 to P1-03 (schema shown as SQL and explained before any migration).
+
 ## 2026-10-20: Restart with research; scaffold and publish
 **Trigger:** Kone judged both earlier TimeLex prototypes too weak to replace GhostPractice and asked for a restart backed by research: multi-language, microservice, MCP-host backend, bring-your-own keys, connected to ClearCut, fully autonomous, public and credible.
 

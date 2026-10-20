@@ -23,6 +23,15 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | 04 | [autonomous-capture-design](research/04-autonomous-capture-design.md) | How do we capture, attribute and narrate with provable accuracy? |
 | 05 | [mcp-host-and-byo-keys](research/05-mcp-host-and-byo-keys.md) | MCP 2026-07-28, host design, bring-your-own-key economics |
 | 06 | [strategy-and-positioning](research/06-strategy-and-positioning.md) | Wedge, scope, pricing in Rand, risks, what to validate first |
+| 07 | [anthropic-terms-and-key-custody](research/07-anthropic-terms-and-key-custody.md) | Retention, ZDR, residency, DPA, usage policy; key-custody options and questions for Anthropic |
+| 08 | [mcp-rust-sdk-spike](research/08-mcp-rust-sdk-spike.md) | Does the Rust MCP SDK serve the 2026-07-28 spec? Spike results and settings |
+
+## Validation kits
+
+| Read this | When |
+|---|---|
+| [interview-kit](validation/interview-kit.md) | Running T0-R01 and T0-B01 interviews: hypotheses, scripts, Rand questions, synthesis |
+| [demo-checklist](validation/demo-checklist.md) | One page for the GhostPractice demo and the TimeLex storyboard session |
 
 ## Architecture decision records
 

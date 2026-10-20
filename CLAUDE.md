@@ -17,7 +17,7 @@ TimeLex: an open, API-first, **exception-based autonomous** practice-management 
 - **Services are contracts:** `contracts/` leads code. ≤ 4 deployables through Phase 2, ≤ 8 by Phase 5. One schema and role per service; no cross-schema reads. (ADR-0001)
 - **Languages:** Rust (domain, gateway, host, vault, capture, desktop agent) · Python (workers only, no business rules) · TypeScript (web, Outlook add-in, SDK, plugin). **Three is the ceiling.** (ADR-0002)
 - **Money and time:** integer cents (`i64`), integer seconds, rounding half away from zero. Never floats. Billing-unit maths is `crates/timelex-units`.
-- **MCP:** spec 2026-07-28 (stateless; Tasks extension; no Sampling/Roots/Logging). Verify the Rust SDK before adopting (P1-08). (ADR-0003, research 05)
+- **MCP:** spec 2026-07-28 (stateless; Tasks extension; we use no Sampling/Roots/Logging, which the spec deprecates). `rmcp` 3.6.0 verified for the server side (P1-08): adopt it pinned, behind a `timelex-mcp` adapter (P1-15). (ADR-0003, research 05, research 08)
 - **BYO keys:** the tenant's Anthropic key and connector tokens live only in `vault` (envelope-encrypted, write-only). Plaintext never in logs, traces, prompts or errors. No platform key in the loop. (ADR-0004)
 - **Autonomy:** ladder L0–L4, calibrated thresholds, sampling audits, automatic demotion. **Never autonomous:** trust money, sending fee notes (default), legal advice/documents, write-offs above limit, deletes, autonomy settings. (ADR-0005, AUTONOMY.md)
 - **Events are the source of truth:** immutable activity events; derived things cite them; ledger is append-only; corrections supersede. (ADR-0006)
@@ -54,4 +54,7 @@ Built and tested: `timelex-units` (14 tests + doctest), `timelex-types` (7 tests
 2. **P1-01 → P1-03**: Postgres schemas/roles, tenancy with RLS, identity. Show Kone the schema before applying migrations.
 3. **P1-08**: verify the Rust MCP SDK against the final spec.
 4. **P3-01**: start the synthetic gold-set generator (long pole for Gate A).
-Open items: confirm the Anthropic key-custody pattern in writing (T0-L02); lawyer review of research 03 (T0-L01); trademark check (T0-B02).
+Open items: confirm the Anthropic key-custody pattern in writing (T0-L02, questions in research 07 §7.3); lawyer review of research 03 (T0-L01); trademark check (T0-B02).
+
+## Update, 20 Oct 2026 (research pass, no product code)
+Research 01, 03, 05 corrected; research 07 (Anthropic terms) and 08 (MCP SDK spike) added; interview kit and demo checklist in `docs/validation/`. ADR amendments are **proposed, not accepted** (0003, 0004, 0005, 0007, 0009). Two things to remember: Anthropic has no African inference region and Fable-class models cannot use zero data retention; GhostPractice is not "Windows on-premise only" and advertises import/export (verify). Step 3 (P1-01 to P1-03) waits for Kone's review.

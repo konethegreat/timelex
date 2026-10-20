@@ -5,10 +5,10 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude · 20 Oct 2026_
 Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T#-*` research, legal and validation tasks; `G#-##` gates. Dependencies in the "After" column. Every task is expected to produce: code + tests (or a decision record), and an update to this file and [WORKLOG.md](WORKLOG.md).
 
 ## Immediate next five
-1. **T0-R01** GhostPractice demo or trial, plus three user interviews.
+1. **T0-R01** GhostPractice demo or trial, plus three user interviews. _Kit ready:_ [interview-kit](validation/interview-kit.md), [demo-checklist](validation/demo-checklist.md).
 2. **T0-B01** Five fee-earner interviews: how time is recorded today and what they would let a machine post.
 3. **P1-01 → P1-03** Postgres schemas and roles, tenancy with row-level security, identity.
-4. **P1-08** Verify the Rust MCP SDK against the final 2026-07-28 spec (or write the thin adapter).
+4. ~~P1-08~~ Server side verified 20 Oct 2026 ([research 08](research/08-mcp-rust-sdk-spike.md)). Next: **P1-15** adapter crate with contract tests; **T0-L05** send Anthropic the written questions.
 5. **P3-01** Start the synthetic gold-set generator now; it is the long pole for Gate A.
 
 ## Phase 0: Foundations
@@ -28,19 +28,22 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 ## Validation, research and legal (T0 to T5)
 | ID | Task | Owner | Status |
 |---|---|---|---|
-| T0-R01 | GhostPractice demo/trial; interview 3 users; capture export/import options | Kone | ⬜ |
+| T0-R01 | GhostPractice demo/trial; interview 3 users; capture export/import options | Kone | ⬜ kit ready (claim register in [research 01 §8](research/01-ghostpractice-teardown.md)) |
 | T0-R02 | Teardown of SA competitors (LegalSuite, Legal Interact, LawPracticeZA, others) | Kone + Claude | ⬜ |
-| T0-B01 | 5 fee-earner interviews; willingness to pay in Rand | Kone | ⬜ |
+| T0-B01 | 5 fee-earner interviews; willingness to pay in Rand | Kone | ⬜ kit ready |
 | T0-B02 | Trademark and name check for "TimeLex" | Kone | ⬜ |
-| T0-L01 | SA attorney and data-protection lawyer review of research 03 | Kone | ⬜ |
-| T0-L02 | Anthropic: retention/ZDR/residency and key-custody pattern in writing | Kone | ⬜ |
-| T0-L03 | Read full LPC Part XII (rules 54–57) from the primary text; list software duties | Kone + auditor | ⬜ |
-| T0-L04 | Check Information Regulator for the final transborder-transfer guidance | Kone | ⬜ |
+| T0-L01 | SA attorney and data-protection lawyer review of research 03 | Kone | ⬜ question list in research 03 §1.3, §2 |
+| T0-L02 | Anthropic: retention/ZDR/residency and key-custody pattern in writing | Kone | 🔄 public terms read ([research 07](research/07-anthropic-terms-and-key-custody.md)); **written confirmation open** |
+| T0-L03 | Read full LPC Part XII (rules 54–57) from the primary text; list software duties | Kone + auditor | 🔄 rules 54.1, 54.6–54.15, 54.19, 54.20, 54.24, 54.34, 57 read in a republication; duties listed; **Gazette text and unread rules remain** |
+| T0-L04 | Check Information Regulator for the final transborder-transfer guidance | Kone | ✅ not published as of 20 Oct 2026, announced as planned; re-check quarterly |
+| T0-L05 | Send Anthropic the written questions in research 07 §7.3; file the reply | Kone | ⬜ |
+| T0-L06 | Read Gazette 41781 (Notice 401 of 2018) and the amendments; read rules not yet read | Kone + auditor | ⬜ |
 | T0-A01 | Decide: own agent loop vs Managed Agents / Agent SDK (spike) | Claude | ⬜ (due P4) |
-| T0-A02 | Can provider-reported cost be reconciled with our metering? | Claude | ⬜ |
+| T0-A02 | Can provider-reported cost be reconciled with our metering? | Claude | 🔄 Anthropic documents a Usage and Cost API by workspace; untested |
+| T0-A03 | Spike Workload Identity Federation with a TimeLex-run issuer (only after T0-L05 answer) | Claude | ⬜ blocked on T0-L05 |
 | T2-R01 | Research Google Workspace capture (Gmail push, Calendar watch, Meet) | Claude | ⬜ |
-| T2-R03 | Spike: Rust + Windows UI Automation for foreground window/document title | Claude | ⬜ |
-| T5-L01 | Review GhostPractice licence terms on exports, imports and automation | Kone | ⬜ |
+| T2-R03 | Spike: Rust + Windows UI Automation for foreground window/document title; **include remote-desktop and virtual-workstation sessions** | Claude | ⬜ |
+| T5-L01 | Review GhostPractice licence terms on exports, imports and automation (no public terms found; "Terms of Use" link points to a PAIA file) | Kone | ⬜ |
 
 ## Phase 1: Platform kit
 | ID | Task | After | Acceptance | Status |
@@ -49,16 +52,17 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 | P1-02 | Tenancy middleware + row-level security | P1-01 | Cross-tenant read fails in property test | ⬜ |
 | P1-03 | `identity`: tenants, users, roles, API keys | P1-02 | Create tenant, issue key, authenticate | ⬜ |
 | P1-04 | `gateway`: authN, rate limits, metering, header-based routing | P1-03 | Authenticated call routes to a service | ⬜ |
-| P1-05 | `vault` v0: envelope encryption, write-only API, key test, audit | P1-02 | Secret never returned, never logged (test) | ⬜ |
+| P1-05 | `vault` v0: envelope encryption, write-only API, key test, audit. Stored-key mode only; WIF waits on T0-L05 ([ADR-0004 proposal](adr/0004-byo-keys-and-secrets-vault.md)) | P1-02 | Secret never returned, never logged (test) | ⬜ |
 | P1-06 | Outbox + relay (Postgres) | P1-01 | Event published exactly-once-effect with idempotent consumer | ⬜ |
 | P1-07 | `docker compose` dev stack (Postgres, MinIO, services, py-worker) | P1-01 | `docker compose up` healthy | ⬜ |
-| P1-08 | Verify Rust MCP SDK vs final 2026-07-28 spec; else thin Streamable-HTTP adapter | | `tools/list`/`tools/call` over stateless HTTP | ⬜ |
+| P1-08 | Verify Rust MCP SDK vs final 2026-07-28 spec; else thin Streamable-HTTP adapter | | `tools/list`/`tools/call` over stateless HTTP | ✅ server side (`rmcp` 3.6.0, [research 08](research/08-mcp-rust-sdk-spike.md)); client side tested in P1-13 |
 | P1-09 | OpenAPI → TypeScript SDK generation; contract tests in CI | P0-05 | Drift fails CI | ⬜ |
 | P1-10 | Telemetry kit (OpenTelemetry): traces, metrics, redacted logs | | Trace spans across gateway→service | ⬜ |
 | P1-11 | `tools/new-service` generator | P1-04, P1-10 | New service builds with auth, tenancy, health, CI | ⬜ |
 | P1-12 | Branch protection / rulesets; required checks | P0-10 | PRs need green CI | ⬜ |
-| P1-13 | `mcp-host` skeleton: `ModelProvider` trait, Anthropic adapter, budgets | P1-05 | Mock-provider test; Rand cap aborts a loop | ⬜ |
+| P1-13 | `mcp-host` skeleton: `ModelProvider` trait, Anthropic adapter, budgets; MCP client side tested here; **escalation ladder is tenant-conditional (Fable-class models need a 30-day-retention workspace, [research 07](research/07-anthropic-terms-and-key-custody.md) §3)** | P1-05 | Mock-provider test; Rand cap aborts a loop; a model the key cannot use degrades to the next rung or `needs_review` | ⬜ |
 | P1-14 | Hash-chained audit-log library | P1-01 | Tamper test detects edit | ⬜ |
+| P1-15 | `timelex-mcp` adapter: safe `rmcp` config (stateless, Origin checks, required metadata, 2026-07-28 only), exact version pin, the spike's 18 probes as Rust contract tests | P1-08 | Probes pass in CI; an `rmcp` bump that breaks one fails CI | ⬜ |
 
 ## Phase 2: Capture
 | ID | Task | After | Acceptance | Status |
@@ -137,7 +141,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 ## Phase 7: Trust and regulated accounting
 | ID | Task | After | Status |
 |---|---|---|---|
-| G7-01 | **Gate C:** attorney + auditor read Part XII with us; sign scope; agree independent audit | T0-L03 | ⬜ |
+| G7-01 | **Gate C:** attorney + auditor read Part XII with us; sign scope; agree independent audit. Include the 54.1 scope check and the 54.9.2.1 hosted-records conditions ([research 03](research/03-south-africa-compliance.md)) | T0-L03, T0-L06 | ⬜ |
 | P7-01 | Business and trust ledgers with invariants (no debit creditor, no commingling) | G7-01 | ⬜ |
 | P7-02 | Receipts and payments with maker-checker | P7-01 | ⬜ |
 | P7-03 | Monthly reconciliation (rule 54.15) | P7-01 | ⬜ |
@@ -151,7 +155,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 |---|---|---|
 | P8-01 | GhostPractice import tooling with dry-run and reconciliation | ⬜ |
 | P8-02 | Adapters: Clio, LegalSuite, others | ⬜ |
-| P8-03 | `insights`: utilisation, forecasting, anomaly detection | ⬜ |
+| P8-03 | `insights`: utilisation, forecasting, anomaly detection. Per-fee-earner performance views are an Anthropic high-risk use (qualified-person review, AI disclosure, never autonomous; [research 07](research/07-anthropic-terms-and-key-custody.md) §6) | ⬜ |
 | P8-04 | POPIA review; retention and deletion tooling | ⬜ |
 | P8-05 | Threat-model refresh; penetration test; independent vault review | ⬜ |
 | P8-06 | SBOM, signed releases, provenance | ⬜ |
