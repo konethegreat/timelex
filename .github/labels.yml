@@ -1,0 +1,33 @@
+# Written by Kone Tshivhinda & Claude
+- { name: bug, color: d73a4a, description: Something is wrong }
+- { name: enhancement, color: a2eeef, description: New feature or improvement }
+- { name: documentation, color: 0075ca, description: Docs, research or ADRs }
+- { name: research, color: 5319e7, description: Validation or research task (T0-*) }
+- { name: adr, color: 1d76db, description: Architecture decision record }
+- { name: security, color: b60205, description: Security-relevant change }
+- { name: compliance, color: fbca04, description: POPIA, LPC rules, usage-policy constraints }
+- { name: good first issue, color: 7057ff, description: Good for newcomers }
+- { name: help wanted, color: 008672, description: Extra attention is needed }
+- { name: blocked, color: e99695, description: Waiting on something else }
+- { name: "phase:0", color: ededed, description: Foundations }
+- { name: "phase:1", color: c5def5, description: Platform kit }
+- { name: "phase:2", color: c5def5, description: Capture }
+- { name: "phase:3", color: c5def5, description: Understand (Gate A) }
+- { name: "phase:4", color: c5def5, description: Ledger and autonomy (Gate B) }
+- { name: "phase:5", color: c5def5, description: Billing }
+- { name: "phase:6", color: c5def5, description: Practice core }
+- { name: "phase:7", color: c5def5, description: Trust accounting (Gate C) }
+- { name: "phase:8", color: c5def5, description: Migration, hardening, GA }
+- { name: "svc:gateway", color: bfdadc, description: Service gateway }
+- { name: "svc:identity", color: bfdadc, description: Service identity }
+- { name: "svc:vault", color: bfdadc, description: Service vault }
+- { name: "svc:mcp-host", color: bfdadc, description: Service mcp-host }
+- { name: "svc:capture", color: bfdadc, description: Services capture-hub and desktop-agent }
+- { name: "svc:attribution", color: bfdadc, description: Service attribution }
+- { name: "svc:ledger", color: bfdadc, description: Service time-ledger }
+- { name: "svc:billing", color: bfdadc, description: Service billing }
+- { name: "svc:trust", color: bfdadc, description: Service trust }
+- { name: "lang:rust", color: dea584, description: Rust }
+- { name: "lang:python", color: 3572a5, description: Python }
+- { name: "lang:typescript", color: 3178c6, description: TypeScript }
+- { name: dependencies, color: 0366d6, description: Dependency updates }

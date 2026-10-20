@@ -1,0 +1,71 @@
+# Written by Kone Tshivhinda & Claude
+# Gateway contract v1 (walking skeleton). Contract-first: this file leads the code (ADR-0001).
+openapi: 3.1.0
+info:
+  title: TimeLex Gateway
+  version: 0.1.0
+  summary: Edge API for TimeLex (pre-alpha).
+  description: |
+    Pre-alpha. Only `/health` and `/v1/meta` exist. Authentication, tenancy and routing arrive in
+    Phase 1 (tasks P1-03, P1-04). Every capability is also exposed as MCP tools; see
+    `contracts/mcp/tools.md`.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8088
+    description: Local development
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Gateway is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+  /v1/meta:
+    get:
+      operationId: getMeta
+      summary: Build and contract metadata
+      responses:
+        "200":
+          description: Metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, version, contracts, stage]
+                properties:
+                  name: { type: string }
+                  version: { type: string }
+                  stage: { type: string, description: "pre-alpha | alpha | beta | stable" }
+                  contracts:
+                    type: object
+                    required: [activityEvent]
+                    properties:
+                      activityEvent: { type: string, description: "Activity-event schema version, e.g. 1.0" }
+components:
+  schemas:
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: Tenant API key (enforced from Phase 1).

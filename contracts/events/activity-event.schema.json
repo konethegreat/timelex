@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/konethegreat/timelex/contracts/events/activity-event.schema.json",
+  "title": "ActivityEvent",
+  "description": "Immutable fact about one observed work signal. Everything derived (time blocks, attributions, narratives, ledger entries) cites these by id. Written by Kone Tshivhinda & Claude.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "tenantId", "source", "kind", "actor", "startedAt", "endedAt", "capturedAt", "privacy"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Major version 1. Additive changes bump the minor; breaking changes need a new major."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^ae_[0-9a-f]{16,64}$",
+      "description": "Idempotent id: hex digest of tenant + source.system + source.sourceId + startedAt. Delivering the same signal twice yields the same id."
+    },
+    "tenantId": { "type": "string", "pattern": "^tn_[0-9A-Za-z]{8,64}$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "sourceId"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "enum": ["m365_mail", "m365_calendar", "m365_teams", "google_mail", "google_calendar", "desktop_agent", "manual", "import"]
+        },
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Id of the signal in the originating system." }
+      }
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["email_sent", "email_received", "meeting", "call", "document_edit", "document_view", "web_research", "desktop_focus", "manual_entry"]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId"],
+      "properties": { "userId": { "type": "string", "pattern": "^us_[0-9A-Za-z]{8,64}$" } }
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "capturedAt": { "type": "string", "format": "date-time" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Metadata about the signal. Titles and addresses may be absent under a metadata-only or redacted privacy tier.",
+      "properties": {
+        "title": { "type": "string", "maxLength": 500 },
+        "threadRef": { "type": "string", "maxLength": 512 },
+        "documentRef": { "type": "string", "maxLength": 512 },
+        "participants": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "domain"],
+            "properties": {
+              "role": { "type": "string", "enum": ["from", "to", "cc", "attendee", "organizer"] },
+              "domain": { "type": "string", "maxLength": 255 },
+              "address": { "type": "string", "maxLength": 320 }
+            }
+          }
+        }
+      }
+    },
+    "contentRef": {
+      "type": "string",
+      "maxLength": 512,
+      "description": "Object-storage key of redacted content, present only when privacy.contentCaptured is true."
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentCaptured", "redactionApplied"],
+      "properties": {
+        "contentCaptured": { "type": "boolean" },
+        "redactionApplied": { "type": "boolean" }
+      }
+    }
+  }
+}

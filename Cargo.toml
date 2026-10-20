@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/timelex-units", "crates/timelex-types", "services/gateway"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "Apache-2.0"
+authors = ["Kone Tshivhinda"]
+repository = "https://github.com/konethegreat/timelex"
+homepage = "https://github.com/konethegreat/timelex"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem to solve, description: "Who is affected and what do they do today?" }
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes: { label: Proposed approach }
+  - type: textarea
+    id: risks
+    attributes:
+      label: Autonomy, privacy or compliance impact
+      description: Could this act without a human, touch client data, move money or reach a client? See docs/AUTONOMY.md.

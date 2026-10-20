@@ -1,0 +1,14 @@
+[package]
+name = "timelex-units"
+description = "Billing-unit and fee maths for TimeLex: seconds to units, units to integer cents. No I/O, no floats."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

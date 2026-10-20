@@ -1,0 +1,22 @@
+name: Bug report
+description: Something is wrong or miscalculated
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not paste client data, real email content or API keys. Use synthetic examples."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include inputs (durations in seconds, amounts in cents) and expected versus actual output.
+    validations: { required: true }
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [units, contracts/types, gateway, py-worker, sdk, docs, other]
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Version or commit }

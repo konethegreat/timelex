@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use TimeLex, please cite it as below."
+title: "TimeLex: autonomous practice management for law firms"
+type: software
+authors:
+  - family-names: Tshivhinda
+    given-names: Kone
+license: Apache-2.0
+repository-code: "https://github.com/konethegreat/timelex"
+date-released: 2026-10-20
+version: 0.1.0
+abstract: "Open, API-first practice-management platform for South African law firms with exception-based autonomous time capture, MCP host backend and bring-your-own-key model access."
+keywords:
+  - legal technology
+  - time capture
+  - model context protocol
+  - South Africa

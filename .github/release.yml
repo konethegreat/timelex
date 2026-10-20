@@ -1,0 +1,14 @@
+changelog:
+  exclude:
+    labels: [dependencies]
+  categories:
+    - title: Security and compliance
+      labels: [security, compliance]
+    - title: Features
+      labels: [enhancement]
+    - title: Fixes
+      labels: [bug]
+    - title: Documentation and decisions
+      labels: [documentation, adr, research]
+    - title: Other changes
+      labels: ["*"]

@@ -1,0 +1,17 @@
+name: Connector or practice-system adapter request
+description: Ask for a capture source or a practice-management system adapter
+labels: [enhancement, research]
+body:
+  - type: input
+    id: system
+    attributes: { label: System, placeholder: "e.g. Google Workspace, Clio, LegalSuite" }
+    validations: { required: true }
+  - type: textarea
+    id: access
+    attributes:
+      label: How can it be accessed legitimately?
+      description: Public API, sanctioned export/import, partner programme. Do not propose bypassing licence terms (ADR-0009).
+    validations: { required: true }
+  - type: textarea
+    id: users
+    attributes: { label: "Who would use it and roughly how many users?" }

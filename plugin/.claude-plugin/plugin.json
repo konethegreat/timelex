@@ -1,0 +1,8 @@
+{
+  "name": "timelex",
+  "version": "0.1.0",
+  "description": "TimeLex for Claude: autonomous legal time capture, attribution and billing preparation via MCP (pre-alpha placeholder).",
+  "author": { "name": "Kone Tshivhinda" },
+  "license": "Apache-2.0",
+  "repository": "https://github.com/konethegreat/timelex"
+}

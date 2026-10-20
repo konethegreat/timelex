@@ -1,0 +1,19 @@
+{
+  "name": "@timelex/sdk",
+  "version": "0.1.0",
+  "description": "Typed TypeScript client for the TimeLex gateway (stub: health and metadata).",
+  "license": "Apache-2.0",
+  "author": "Kone Tshivhinda",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test \"dist/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,15 @@
+name: Decision proposal (ADR)
+description: Propose or challenge an architecture decision
+labels: [adr]
+body:
+  - type: textarea
+    id: context
+    attributes: { label: Context, description: Link the research file or ADR this relates to. }
+    validations: { required: true }
+  - type: textarea
+    id: decision
+    attributes: { label: Proposed decision }
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes: { label: Alternatives considered }

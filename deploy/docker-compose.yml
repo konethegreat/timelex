@@ -1,0 +1,29 @@
+# Written by Kone Tshivhinda & Claude
+# Local infrastructure only (Phase 1 adds the services). For development; credentials are
+# throwaway local values, never reuse them anywhere else.
+name: timelex-dev
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: timelex
+      POSTGRES_PASSWORD: timelex_local_dev_only
+      POSTGRES_DB: timelex
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timelex -d timelex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: timelex
+      MINIO_ROOT_PASSWORD: timelex_local_dev_only
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: ["miniodata:/data"]
+volumes:
+  pgdata:
+  miniodata:

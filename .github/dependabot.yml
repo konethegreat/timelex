@@ -1,0 +1,27 @@
+# Written by Kone Tshivhinda & Claude
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      rust-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: uv
+    directory: /workers/py-worker
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule: { interval: weekly }
