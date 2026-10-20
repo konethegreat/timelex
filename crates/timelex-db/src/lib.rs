@@ -79,6 +79,11 @@ impl TenantPool {
         Ok(TenantTx { tx, tenant })
     }
 
+    /// Check the database answers (`SELECT 1`). Touches no tenant data, so it needs no tenant.
+    pub async fn ping(&self) -> Result<(), sqlx::Error> {
+        sqlx::query("SELECT 1").execute(&self.pool).await.map(|_| ())
+    }
+
     /// Close the pool (waits for connections to be returned).
     pub async fn close(&self) {
         self.pool.close().await;

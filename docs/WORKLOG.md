@@ -16,7 +16,13 @@ Append an entry at the end of every working session (newest first).
 - **Design finding:** a key's permissions are its scopes intersected with the owner's *current* roles, so demoting someone shrinks their existing keys at once.
 - **Open (decide later):** `keys:manage` lets a holder issue a key up to any user's permissions (documented; only admins have it). Idempotency keys (ADR-0010) are accepted but ignored: replaying key issuance cannot return the token twice, so it needs a design decision.
 
-**Not done:** HTTP layer and gateway-side tenant claim (P1-04), users/roles/SSO, audit events.
+**PR 4 (stacked on PR 3): P1-04 part a.** Contracts first (ADR-0012 accepted; `internal-auth.md`; identity and gateway OpenAPI 0.2.0), then: `timelex-auth` (EdDSA internal token, 20 tests including alg-none, HMAC-with-public-key, forged-key, wrong-audience and tampered-claim attacks); identity HTTP layer and binary (11 tests); gateway authentication and routing (13 stub-upstream tests, 5 end-to-end tests with Postgres); a manual smoke test of the real binaries with `curl`.
+- Mutation checks (by hand): operator check bypassed, identity ignoring caller kind, and a leaked extra header each broke at least one test. The leak mutation was *not* caught at first (the test blocked named headers); it now uses an exact header allowlist.
+- **Finding:** reqwest cannot tell a connect timeout from a response timeout, and on Windows a closed port times out instead of refusing, so "service down" can read as 504 there. The contract wording still holds ("outcome unknown"); the test uses a dropped connection instead of a closed port.
+- **Duplicated on purpose for now:** the problem-details helper exists in both the gateway and identity. A shared HTTP kit crate is worth extracting when a third service needs it.
+- **Open:** the gateway has no tracing or request ids (P1-10); identity logs refusal reasons to stderr only; operator credential is a single static key hash (no operator accounts); replay protection is the 30-second lifetime only.
+
+**Not done:** gateway part b (rate limits, metering, `Mcp-Method` routing), users/roles/SSO, audit events.
 **Unverified:** behaviour on Postgres 18 (Dependabot PR open); hosted Postgres with a restricted admin role (the bootstrap needs `CREATEROLE`); performance of the policy on large tables.
 
 ## 2026-10-20 (session 2): Step 1 research pass, no product code
