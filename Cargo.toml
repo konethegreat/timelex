@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/timelex-units", "crates/timelex-types", "services/gateway"]
+members = ["crates/timelex-units", "crates/timelex-types", "crates/timelex-identity", "services/gateway"]
 
 [workspace.package]
 version = "0.1.0"
