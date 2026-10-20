@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # Written by Kone Tshivhinda & Claude
 # Raw spec-conformant probes of the rmcp 3.6.0 spike (MCP 2026-07-28). Usage: probe.sh PORT
 P=${1:-8090}

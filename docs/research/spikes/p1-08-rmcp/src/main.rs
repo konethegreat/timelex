@@ -1,4 +1,4 @@
-﻿// Written by Kone Tshivhinda & Claude
+// Written by Kone Tshivhinda & Claude
 // P1-08 spike: does rmcp 3.6.0 serve MCP 2026-07-28 statelessly over Streamable HTTP,
 // including tools/list, tools/call and the Tasks extension? Scratch code, not product code.
 
