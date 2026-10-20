@@ -15,6 +15,9 @@ Law-firm data is confidential and personal. Hosted use needs strong tenant isola
 7. **Data-flow register**: every tenant has an exportable record of what data goes to which processor (model provider, KMS, email provider) for the firm's POPIA documentation.
 8. **Region and provider disclosure** in the admin UI, with a policy switch "block model calls unless provider region ∈ allowed set".
 
+## Evidence update (20 Oct 2026; clarifies point 2 and 8, no decision change)
+Anthropic offers **no South African or African inference region**: `inference_geo` is `global` or `us` only, and workspace geo is `us` only ([research 07 §4](../research/07-anthropic-terms-and-key-custody.md)). Point 8's policy switch "block model calls unless provider region is in the allowed set" therefore blocks **every** Anthropic call for a firm that allows only South African processing. The admin UI and sales material must say so plainly. A South African region for TimeLex's own data at rest does not change where inference runs. Also: rule 54.9.2.1 does not require South African hosting for offsite electronic records but does require confidentiality, security, immediate access for the firm's office and the Council, and a provider contract ([research 03 §1.2](../research/03-south-africa-compliance.md)).
+
 ## Alternatives considered
 - *Schema-per-tenant* (as used in some SaaS backends): stronger isolation, heavier operations and migrations at scale. Keep as the upgrade path.
 - *Database-per-tenant from day one:* highest isolation, highest cost; unnecessary for early pilots.

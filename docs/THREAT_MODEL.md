@@ -44,9 +44,16 @@ Malicious external sender (email/documents), curious or malicious tenant user, c
 | T16 | **Trust-ledger invariant violation** (debit balance, commingling) | Integrity | Database constraints and invariant checks, immediate alerts, no autonomy, independent audit | P7-01 |
 | T17 | **Over-collection** of personal or privileged data | Privacy | Capture off by default; metadata-first; exclusions; retention limits; redaction | P2-07 |
 | T18 | **Malicious plugin/MCP server** connected by a tenant admin | Elevation | Allow-listed servers per workflow, tool annotations, no auto-trust of third-party tool descriptions, output treated as untrusted | P4-04 |
+| T19 | **Provider retention of privileged content** (default 30 days; flagged content up to 2 years even under zero data retention) | Info disclosure / Compliance | Redaction and metadata-first before any model call; per-client exclusions; onboarding states the real retention terms; never advertise "zero retention"; firm obtains ZDR itself if it wants it ([research 07 §3](research/07-anthropic-terms-and-key-custody.md)) | P2-07, P4-05 |
+| T20 | **Federation issuer signing-key compromise** (only if WIF is adopted, [ADR-0004 proposal](adr/0004-byo-keys-and-secrets-vault.md)) | Spoofing / Elevation | KMS-held signing key, rotation, per-tenant `sub` claim pinned in each firm's rule, short token lifetime, alerts on rule changes; customers can delete the rule at any time | Decide with ADR-0004 |
+| T21 | **Misconfigured MCP gateway** (SDK defaults: no Origin check, legacy session mode, optional per-request metadata) | Spoofing / Tampering | Adapter crate sets the safe config and runs the spike's 18 probes as CI contract tests; pin the SDK version ([research 08 §5](research/08-mcp-rust-sdk-spike.md)) | P1-08 follow-up, P1-04 |
+| T22 | **Policy drift** (usage policy changes; the displayed version is effective 12 Nov 2026) and **ZDR/model mismatch** (Fable-class model on a ZDR org returns HTTP 400) | Compliance / Availability | Re-read the policy on its effective date; model-availability health check degrades to the next rung or `needs_review`; ladder is tenant-conditional | T0-L02, P1-13 |
+| T23 | **Breach-notification chain gap** (operator must tell the firm "immediately" under POPIA s21(2); upstream promises 48 hours) | Compliance | Operator agreement and runbook with explicit timings; vault or capture incident triggers firm notice first, regulator duties stay with the firm (s22); records loss also triggers rule 54.14.2 ([research 03 §2.4](research/03-south-africa-compliance.md)) | Before any hosted tenant |
+| T24 | **Hosted records not meeting rule 54.9.2.1** (confidential, secured, immediately accessible to the firm's office and the Council, provider bound by contract) | Compliance | Contract template; export and access path for firm and Council; confirm interpretation with counsel before holding any accounting record | G7-01, T0-L01 |
 
 ## Residual risks we accept for now
-- Provider-side retention beyond our control until terms are confirmed (T0-L02).
+- Provider-side retention is now **known but not controllable**: 30 days by default and up to 2 years when content is flagged, even under ZDR (T0-L02, public terms only; written confirmation still open).
+- Model inference happens outside South Africa; Anthropic has no African region ([research 07 §4](research/07-anthropic-terms-and-key-custody.md)).
 - Pre-alpha: none of the mitigations above are implemented yet. This file is the checklist, not a claim.
 
 ## Reporting

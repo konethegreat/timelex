@@ -20,6 +20,9 @@ The brief is "fully autonomous with minimal human input". Competitors review eve
 - *Single global confidence threshold.* Ignores differing risk by client, matter type and amount.
 - *Let the model decide when to ask.* Self-reported confidence is poorly calibrated; policy lives outside the model.
 
+## Proposed amendment (20 Oct 2026; **not yet accepted; the Decision above is unchanged**)
+The Context cites POPIA section 71 as restricting "solely automated consequential decisions". The primary text ([research 03 §2.1](../research/03-south-africa-compliance.md)) covers decisions based solely on automated processing **intended to provide a profile** (such as work performance), with contract-based exceptions that require a chance to make representations and information about the logic. Proposed wording: *"Section 71 may apply where automated processing profiles a fee earner's work performance; counsel to confirm. The gates on fee notes and legal documents are product and risk decisions, supported for legal documents and advice by the Anthropic usage policy."* Also add: per-fee-earner performance analytics are an Anthropic high-risk use (evaluating a worker's performance), so they are never autonomous and always disclose AI involvement ([research 07](../research/07-anthropic-terms-and-key-custody.md) §6). No change to the ladder, the hard-coded exclusions or the demotion rules.
+
 ## Consequences
 - Needs an evaluation harness and labelled data before autonomy is enabled for any tenant (Phase 3 gate).
 - Review UI must be fast: exceptions grouped by cause, one-click accept/correct, batch operations.
