@@ -22,7 +22,12 @@ TimeLex needs a server-side component that runs agent loops (attribution, narrat
 - *Let outer agents (Claude Desktop) be the only hosts.* Simple, but cannot run autonomously on a schedule and cannot enforce our policy.
 - *Merge host into gateway.* Different scaling and blast radius; keep separate.
 
+## Proposed amendments (20 Oct 2026; **not yet accepted; the Decision above is unchanged**)
+1. **SDK (P1-08 outcome, [research 08](../research/08-mcp-rust-sdk-spike.md)):** use `rmcp` **pinned to an exact version** (3.6.0 at the time of the spike) behind a `timelex-mcp` adapter crate that fixes the unsafe defaults (legacy session mode, no Origin check, optional per-request metadata) and carries the spike's 18 probes as CI contract tests. We do not write our own protocol layer.
+2. **Escalation ladder vs ZDR ([research 07](../research/07-anthropic-terms-and-key-custody.md) §3):** Fable-class models require 30-day retention and are unavailable under zero data retention. The ladder becomes tenant-conditional: the Fable rung is enabled only if the tenant has a 30-day-retention workspace for it; otherwise Opus escalates to a human.
+3. **Sampling stays unused by choice.** The spec deprecates Sampling, Roots and Logging (earliest removal on or after 2027-07-28) but still carries them as input requests; our rule is design, not protocol.
+
 ## Consequences
 - We own prompt-injection defence at the workflow layer ([THREAT_MODEL.md](../THREAT_MODEL.md)).
-- The SDK choice (`rmcp` vs thin adapter) is gated by task **P1-08**.
+- The SDK choice (`rmcp` vs thin adapter) is gated by task **P1-08** (server side verified; client side moves to P1-13).
 - ClearCut's separate-process MCP decision is respected at the *host/gateway* level; services bind MCP on a distinct listener (ADR-0001 §3) rather than separate binaries, which differs from ClearCut and is revisited if blast-radius concerns appear.

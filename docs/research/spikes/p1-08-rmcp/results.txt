@@ -1,0 +1,153 @@
+# Probe results: rmcp 3.6.0, lax server (port 8090), 2026-10-20T16:31Z
+probe.sh: line 1: ﻿#!/bin/bash: No such file or directory
+=== 1 server/discover
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","supportedVersions":["2024-11-05","2025-03-26","2025-06-18","2025-11-25","2026-07-28"],"capabilities":{"extensions":{"io.modelcontextprotocol/tasks":{}},"tools":{}},"ttlMs":0,"cacheScope":"private","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"timelex-spike","version":"0.0.1"}}}}
+
+
+=== 2 tools/list
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","ttlMs":0,"cacheScope":"private","tools":[{"name":"echo","description":"Echo the given text back (read-only)","inputSchema":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"}},{"name":"slow_job","description":"Pretend to back-fill a mailbox; returns a task","inputSchema":{"properties":{},"type":"object"}}]}}
+
+
+=== 3 tools/call echo
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":3,"result":{"resultType":"complete","content":[{"type":"text","text":"hello"}],"isError":false}}
+
+
+=== 4 tools/call slow_job WITH tasks capability
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":4,"result":{"resultType":"task","taskId":"task-1792513915866","status":"working","createdAt":"2026-10-20T16:31:55.866410700+00:00","lastUpdatedAt":"2026-10-20T16:31:55.866410700+00:00","ttlMs":60000,"pollIntervalMs":500}}
+
+
+=== 5 tools/call slow_job WITHOUT tasks capability (expect -32021)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":5,"error":{"code":-32021,"message":"Missing required client capability","data":{"requiredCapabilities":{"extensions":{"io.modelcontextprotocol/tasks":{}}}}}}
+
+=== 6 task id: task-1792513916188
+=== 6a tasks/get (immediately)
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":7,"result":{"resultType":"complete","taskId":"task-1792513916188","status":"working","createdAt":"2026-10-20T16:31:56.351756200+00:00","lastUpdatedAt":"2026-10-20T16:31:56.351756200+00:00","ttlMs":null}}
+
+
+=== 6b tasks/get (after 3s; new request, no connection state)
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":7,"result":{"resultType":"complete","taskId":"task-1792513916188","status":"completed","createdAt":"2026-10-20T16:31:59.568117900+00:00","lastUpdatedAt":"2026-10-20T16:31:59.568117900+00:00","ttlMs":null,"result":{"content":[{"text":"backfill done","type":"text"}],"isError":false,"resultType":"complete"}}}
+
+
+=== 7 missing _meta (spec: 400 + -32602)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":8,"error":{"code":-32602,"message":"Invalid params: request _meta is missing or has malformed required fields: io.modelcontextprotocol/protocolVersion, io.modelcontextprotocol/clientCapabilities"}}
+
+=== 8 Mcp-Name header mismatch (spec: 400 + -32020)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":9,"error":{"code":-32020,"message":"Mcp-Name header `slow_job` does not match body value `echo`"}}
+
+=== 9 Mcp-Method header mismatch (spec: 400 + -32020)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":10,"error":{"code":-32020,"message":"Mcp-Method header `tools/list` does not match body method `tools/call`"}}
+
+=== 10 missing Mcp-Method header entirely (spec: 400 + -32020)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":11,"error":{"code":-32020,"message":"missing required Mcp-Method header"}}
+
+=== 11 unsupported protocol version (spec: 400 + -32022 with data.supported)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":12,"error":{"code":-32022,"message":"Unsupported protocol version","data":{"requested":"1900-01-01","supported":["2024-11-05","2025-03-26","2025-06-18","2025-11-25","2026-07-28"]}}}
+
+=== 12 header says 2026-07-28 but body _meta says 2025-11-25 (spec: 400 + -32020)
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":13,"error":{"code":-32020,"message":"MCP-Protocol-Version header (2026-07-28) does not match request _meta protocolVersion (2025-11-25)"}}
+
+=== 13 GET (spec: 405)
+HTTP/1.1 405 Method Not Allowed
+allow: POST
+content-length: 18
+
+=== 14 DELETE (spec: 405)
+HTTP/1.1 405 Method Not Allowed
+allow: POST
+content-length: 18
+
+=== 15 Mcp-Session-Id on a modern request (spec: ignore, never echo)
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":14,"result":{"resultType":"complete","ttlMs":0,"cacheScope":"private","tools":[{"name":"echo","description":"Echo the given text back (read-only)","inputSchema":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"}},{"name":"slow_job","description":"Pretend to back-fill a mailbox; returns a task","inputSchema":{"properties":{},"type":"object"}}]}}
+
+
+=== 16 Origin: https://evil.example (spec: 403 if invalid; rmcp default has no origin allow-list)
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+
+=== 17 Host: timelex.example (rmcp default allows only loopback Host)
+HTTP/1.1 403 Forbidden
+content-length: 37
+date: Tue, 20 Oct 2026 16:32:01 GMT
+
+=== 18 legacy initialize (2025-11-25) against a server with legacy_session_mode=false
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":17,"result":{"protocolVersion":"2025-11-25","capabilities":{"extensions":{"io.modelcontextprotocol/tasks":{}},"tools":{}},"serverInfo":{"name":"timelex-spike","version":"0.0.1"}}}
+
+
+
+# Same probes against --strict server (port 8091): only the differences that matter
+--- strict: tools/list with no headers and no _meta
+HTTP/1.1 400 Bad Request
+content-type: application/json
+
+{"jsonrpc":"2.0","id":1,"error":{"code":-32020,"message":"Missing MCP-Protocol-Version header for request requiring per-request protocol metadata"}}
+
+--- lax: tools/list with no headers and no _meta (served as legacy 2025-03-26)
+HTTP/1.1 200 OK
+content-type: text/event-stream
+cache-control: no-cache
+x-accel-buffering: no
+
+data: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"echo","description":"Echo the given text back (read-only)","inputSchema":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"}},{"name":"slow_job","description":"Pretend to back-fill a mailbox; returns a task","inputSc
+

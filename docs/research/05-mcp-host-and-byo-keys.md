@@ -21,6 +21,8 @@ So "an MCP host backend" has two faces: **inward** (our agents call our services
 - **Auth:** OAuth 2.1/OIDC alignment, RFC 9207 issuer validation; Dynamic Client Registration deprecated in favour of Client ID Metadata Documents.
 - **Deprecated (≥ 12 months notice):** **Roots, Sampling, Logging**, and the legacy HTTP+SSE transport ([AAIF migration guide](https://aaif.io/blog/mcp-2026-07-28-whats-changing-and-how-to-migrate)). Earliest removal 28 July 2027.
 - **ClearCut found** that `rmcp` 3.5.1 still spoke protocol `2025-06-18` as of 19 Oct 2026 ([ClearCut CLAUDE.md](https://github.com/konethegreat/clearcut/blob/main/CLAUDE.md)). "Beta support" and "released crate" are different things. **Task P1-08 verifies the current Rust SDK before we commit to it**, with a fallback of a thin hand-written Streamable-HTTP adapter over the stateless spec.
+- **P1-08 result (20 Oct 2026, [research 08](08-mcp-rust-sdk-spike.md)):** `rmcp` **3.6.0** serves 2026-07-28 statelessly over Streamable HTTP, including Tasks, and passed every spec probe by default except Origin validation (probe 16); its default also serves requests that lack per-request metadata as legacy traffic. Both are configuration. The crate's changelog shows 2026-07-28 support from 3.0.0 (28 Jul 2026). We could not reproduce ClearCut's finding and did not test 3.5.1. Decision: adopt `rmcp` behind a thin adapter, pinned exactly.
+- **Correction:** Roots, Sampling and Logging are *deprecated* (earliest removal on or after 2027-07-28), not removed.
 
 ## 3. Design consequences
 1. **Stateless servers.** State lives in Postgres and moves through explicit handles (`task_id`, `entry_id`, `batch_id`). This matches the microservice goal exactly.
@@ -62,6 +64,7 @@ So "an MCP host backend" has two faces: **inward** (our agents call our services
 - *Spend risk:* an agent loop could burn the customer's money. Mitigation: hard Rand caps in `mcp-host` plus Anthropic workspace spend limits (recommended in onboarding).
 
 ## 6. Key custody (summary; full design in [ADR-0004](../adr/0004-byo-keys-and-secrets-vault.md))
+_Update 20 Oct 2026: a proposal to prefer Workload Identity Federation over stored keys, plus retention, residency and usage-policy findings, are in [research 07](07-anthropic-terms-and-key-custody.md) and the ADR-0004 amendment._
 - Envelope encryption: AES-256-GCM data keys per secret, wrapped by a key-encryption key in a cloud KMS (a South African region where available, for residency) or a local sealed key for self-hosters.
 - Decryption only inside `mcp-host`/`capture-hub` workers, in memory, for the duration of a call.
 - Rotation, revocation, access log, tamper-evident audit.
@@ -70,8 +73,8 @@ So "an MCP host backend" has two faces: **inward** (our agents call our services
 ## 7. Open questions
 | ID | Question |
 |---|---|
-| P1-08 | Is `rmcp` (or another Rust SDK) on the final 2026-07-28 spec yet? |
-| T0-L02 | Does Anthropic's agreement permit a platform storing a customer's key on the customer's behalf in this way, and what do they recommend (e.g. workspace-scoped keys)? |
+| P1-08 | ~~Is `rmcp` on the final spec yet?~~ **Yes, 3.6.0, server side verified** ([research 08](08-mcp-rust-sdk-spike.md)). Client side still to test (P1-13) |
+| T0-L02 | Does Anthropic's agreement permit a platform storing a customer's key on the customer's behalf in this way, and what do they recommend (e.g. workspace-scoped keys)? **Public terms are silent**; Anthropic documents service-account keys, per-workspace spend limits and Workload Identity Federation. Written confirmation still needed ([research 07](07-anthropic-terms-and-key-custody.md) §7) |
 | T0-A01 | Should Anthropic's **Managed Agents** or the Agent SDK be used instead of our own loop? Trade-off: speed to build versus control of keys, policy, residency and multi-provider. Default: our loop, revisit at Phase 4 |
 | T0-A02 | Provider-reported cost APIs: can we reconcile our metering against the customer's actual bill? |
 

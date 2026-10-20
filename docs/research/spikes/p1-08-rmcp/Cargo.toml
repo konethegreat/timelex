@@ -1,0 +1,19 @@
+# Written by Kone Tshivhinda & Claude
+# P1-08 spike. NOT part of the TimeLex workspace: the empty [workspace] table below detaches it,
+# so `cargo test --workspace` at the repo root never builds it.
+[workspace]
+
+[package]
+name = "spike-rmcp"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway spike: does rmcp serve MCP 2026-07-28 statelessly over Streamable HTTP?"
+
+[dependencies]
+axum = "0.8"
+chrono = "0.4"
+# Exact pin on purpose: rmcp shipped 14 releases in the 12 weeks after the spec (see docs/research/08).
+rmcp = { version = "=3.6.0", features = ["server", "macros", "transport-streamable-http-server"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
