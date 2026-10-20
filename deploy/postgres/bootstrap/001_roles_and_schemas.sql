@@ -4,7 +4,6 @@
 -- Run ONCE per database, as a role that may create roles (the superuser in local dev, the managed
 -- admin user in a hosted database). Safe to re-run. Never put passwords in this file: login
 -- passwords are set by the deployment (see deploy/postgres/README.md).
--- DRAFT: not yet executed anywhere. Review first.
 
 -- 1. The migrator: owns every service schema and runs each service's own migrations.
 --    It is NOT a superuser and does NOT bypass row-level security.

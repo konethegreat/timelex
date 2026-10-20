@@ -6,7 +6,6 @@
 -- Every policy then compares a row's tenant_id with platform.current_tenant(). If the setting is
 -- missing, current_tenant() is NULL, the comparison is never true, and the query sees nothing
 -- (fail closed). A bad uuid raises an error, which also fails closed.
--- DRAFT: not yet executed anywhere. Review first.
 
 -- 1. The tenant the current transaction is acting for (NULL when none is set).
 CREATE OR REPLACE FUNCTION platform.current_tenant()

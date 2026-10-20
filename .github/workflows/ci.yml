@@ -13,6 +13,22 @@ jobs:
   rust:
     name: Rust (fmt, clippy, tests, contracts)
     runs-on: ubuntu-latest
+    # A throwaway Postgres for the tenancy and role-isolation tests (crates/timelex-db).
+    # "trust" is acceptable only because this container lives for one CI run and is not published.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TIMELEX_TEST_DATABASE_URL: postgres://postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1

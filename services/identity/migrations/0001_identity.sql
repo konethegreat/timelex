@@ -1,7 +1,6 @@
 -- Written by Kone Tshivhinda & Claude
 -- P1-03: identity schema: tenants, users, roles, API keys.
 -- Run by timelex_migrator (search_path = identity). Needs the three bootstrap files first.
--- DRAFT: not yet executed anywhere. Review first.
 --
 -- Rules about this data live in Rust (crates/timelex-identity). The constraints below are a second
 -- line of defence: they stop bad rows even if the Rust code has a bug.
