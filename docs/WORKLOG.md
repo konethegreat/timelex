@@ -35,3 +35,12 @@ Append an entry at the end of every working session (newest first).
 - Anthropic retention/ZDR and key-custody terms (T0-L02).
 
 **Next:** see "Immediate next five" in `docs/TASKS.md`.
+
+## 2026-10-20 (later): publication status
+
+_Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
+
+- Public repo `konethegreat/timelex` is live (Apache-2.0). CI, CodeQL, Sync labels and OpenSSF Scorecard all passed on the first commit.
+- Enabled: Discussions, private vulnerability reporting, delete-branch-on-merge. Already on: secret scanning and push protection.
+- **Still manual (browser automation was unreliable):** repository topics; dependency graph, Dependabot alerts and security updates (the "Dependency review" workflow fails on Dependabot PRs until the dependency graph is on); a light ruleset; the `v0.1.0` release (tag pushes were refused from the build sandbox, so create the tag in the release form).
+- Dependabot has opened three version-update PRs (actions group, `jsonschema` 0.30 → 0.59, Postgres 17 → 18). CI passes on the first two; review each, and do not merge the Postgres 18 bump without checking the volume-layout change.
