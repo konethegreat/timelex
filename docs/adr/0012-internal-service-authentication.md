@@ -1,6 +1,6 @@
 # ADR-0012: Internal service authentication and gateway routing
 
-Status: Proposed · Date: 2026-10-20 · Deciders: Kone Tshivhinda, Claude
+Status: Accepted · Date: 2026-10-20 · Deciders: Kone Tshivhinda, Claude
 Builds on [ADR-0001](0001-service-boundaries-and-contract-first.md), [ADR-0010](0010-messaging-and-sync-contracts.md) and [ADR-0011](0011-tenancy-enforcement-and-database-roles.md). Wire details: [contracts/internal-auth.md](../../contracts/internal-auth.md). Task P1-04 (part a).
 
 ## Context

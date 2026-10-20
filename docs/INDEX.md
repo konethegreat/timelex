@@ -48,6 +48,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0009](adr/0009-ghostpractice-interop-strategy.md) | GhostPractice interoperability and migration | Proposed |
 | [0010](adr/0010-messaging-and-sync-contracts.md) | Messaging and synchronous contracts | Proposed |
 | [0011](adr/0011-tenancy-enforcement-and-database-roles.md) | Tenancy enforcement and database roles | Accepted |
-| [0012](adr/0012-internal-service-authentication.md) | Internal service authentication and gateway routing | Proposed |
+| [0012](adr/0012-internal-service-authentication.md) | Internal service authentication and gateway routing | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.
