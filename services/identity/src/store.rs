@@ -74,6 +74,38 @@ pub struct Principal {
     pub permissions: BTreeSet<Permission>,
 }
 
+/// Who is acting, for operations that need a caller. Built from an authenticated [`Principal`] (in
+/// tests) or from a verified internal token (in the HTTP layer); the store never trusts anything else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Actor {
+    /// The firm.
+    pub tenant: TenantId,
+    /// The user acting.
+    pub user: UserId,
+    /// What they may do.
+    pub permissions: BTreeSet<Permission>,
+}
+
+impl From<&Principal> for Actor {
+    fn from(p: &Principal) -> Self {
+        Self {
+            tenant: p.tenant,
+            user: p.user,
+            permissions: p.permissions.clone(),
+        }
+    }
+}
+
+impl From<&timelex_auth::Principal> for Actor {
+    fn from(p: &timelex_auth::Principal) -> Self {
+        Self {
+            tenant: p.tenant,
+            user: p.user,
+            permissions: p.permissions.clone(),
+        }
+    }
+}
+
 /// Input for issuing a key.
 #[derive(Debug, Clone)]
 pub struct IssueKeyRequest {
@@ -121,6 +153,11 @@ impl IdentityStore {
     /// A store with an injected clock (for tests).
     pub fn with_clock(pool: TenantPool, clock: Clock) -> Self {
         Self { pool, clock }
+    }
+
+    /// Check the database answers. For the health endpoint; reads no tenant data.
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        Ok(self.pool.ping().await?)
     }
 
     /// Create a firm, its first admin and the admin's first key in one transaction.
@@ -225,9 +262,11 @@ impl IdentityStore {
     /// Issue an API key for `req.owner` (default: the caller), acting as `actor`.
     pub async fn issue_api_key(
         &self,
-        actor: &Principal,
+        actor: impl Into<Actor>,
         req: IssueKeyRequest,
     ) -> Result<IssuedKey, StoreError> {
+        let actor: Actor = actor.into();
+        let actor = &actor;
         let now = (self.clock)();
         let owner = req.owner.unwrap_or(actor.user);
         let mut tx = self.pool.begin(actor.tenant).await?;
@@ -284,7 +323,8 @@ impl IdentityStore {
     }
 
     /// Revoke a key. Revoking an already-revoked key succeeds (it stays revoked).
-    pub async fn revoke_api_key(&self, actor: &Principal, key: ApiKeyId) -> Result<(), StoreError> {
+    pub async fn revoke_api_key(&self, actor: impl Into<Actor>, key: ApiKeyId) -> Result<(), StoreError> {
+        let actor: Actor = actor.into();
         require_permission(&actor.permissions, Permission::KeysManage)?;
         let now = (self.clock)();
         let mut tx = self.pool.begin(actor.tenant).await?;

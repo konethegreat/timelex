@@ -1,11 +1,15 @@
 // Written by Kone Tshivhinda & Claude
 //! TimeLex gateway: walking skeleton.
 //!
-//! Today: `GET /health` and `GET /v1/meta`. Later (Phase 1): authN, tenant resolution, rate
+//! `GET /health` and `GET /v1/meta` are open. Since P1-04 part a the gateway also authenticates callers
+//! through the identity service and routes three identity operations ([`proxy`]). Still to come (part b): rate
 //! limits, metering, header-based routing and outward MCP aggregation. See
 //! `docs/ARCHITECTURE.md` and ADR-0001/0003.
 
-use axum::{routing::get, Json, Router};
+pub mod config;
+mod proxy;
+
+use axum::{http::StatusCode, response::Response, routing::get, Json, Router};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -45,11 +49,24 @@ async fn meta() -> Json<Meta> {
     })
 }
 
-/// Build the router. Kept separate from `main` so tests can call it without a socket.
+/// Build the open routes only (`/health`, `/v1/meta`). Kept separate from `main` so tests can call it
+/// without a socket or configuration.
 pub fn app() -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/meta", get(meta))
+        .fallback(not_found)
+}
+
+async fn not_found() -> Response {
+    proxy::problem(StatusCode::NOT_FOUND, "not-found", "Not found", None)
+}
+
+/// Build the full gateway: the open routes plus authenticated routing to the identity service.
+/// Anything else, including the internal `authenticate` operation, is a 404.
+pub fn app_with(config: config::Config) -> Result<Router, String> {
+    let state = proxy::GatewayState::new(config)?;
+    Ok(app().merge(proxy::routes(state)))
 }
 
 #[cfg(test)]

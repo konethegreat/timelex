@@ -30,7 +30,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 
 | Service | Lang | Responsibility | Owns data | Phase | Status |
 |---|---|---|---|---|---|
-| [`gateway`](../services/gateway) | Rust | Edge: authN (API keys, OIDC), tenant resolution, rate limits and metering, routing, outward MCP aggregation, OpenAPI aggregation | none (config only) | 1 | ✅ health + meta |
+| [`gateway`](../services/gateway) | Rust | Edge: authN (API keys, OIDC), tenant resolution, rate limits and metering, routing, outward MCP aggregation, OpenAPI aggregation | none (config only) | 1 | ✅ authN + routing to identity (part a); limits, metering, MCP pending |
 | [`identity`](../services/identity) | Rust | Tenants, users, roles, API keys, SSO settings | `identity` | 1 | ✅ library (create firm, issue/revoke key, authenticate) |
 | [`vault`](../services/vault) | Rust | BYO keys and OAuth tokens: envelope encryption, write-only API, spend caps, audit | `vault` | 1 | 🟡 |
 | [`mcp-host`](../services/mcp-host) | Rust | Agent runtime: MCP clients, model loop, workflows, budgets, escalation, audit | `host` | 1–4 | 🟡 |
