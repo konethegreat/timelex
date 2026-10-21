@@ -4,6 +4,17 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-20 (session 3): Step 3 begins: P1-01 to P1-03 (schema, tenancy, identity domain)
+**Trigger:** Kone approved the Step 1 report and the drafted schema (tenant-in-key tokens, no passwords, identity-only provisioning).
+
+**Done**
+- Pushed the Step 1 commits to `main`. From here, work goes through small PRs.
+- PR 1: `timelex-identity` domain crate (pure; 55 unit tests + doctest). PR 2 (stacked on PR 1): bootstrap SQL, identity migration, `timelex-db` crate (`TenantPool`/`TenantTx`), 18 database tests, CI Postgres service, ADR-0011.
+- Applied the SQL for the first time to a throwaway Postgres 17 (trust auth, no passwords); all 18 tests passed first run, then a **mutation check** (policy replaced by `USING (true)`) made 7 of 11 tenancy tests fail, so the tests do bite.
+
+**Not done:** identity store (create tenant, issue key, authenticate), `identity.v1.yaml` OpenAPI contract, gateway-side tenant claim (P1-04).
+**Unverified:** behaviour on Postgres 18 (Dependabot PR open); hosted Postgres with a restricted admin role (the bootstrap needs `CREATEROLE`); performance of the policy on large tables.
+
 ## 2026-10-20 (session 2): Step 1 research pass, no product code
 **Trigger:** research in `docs/research/` was partly unverified; Kone asked for the gaps to be closed from primary sources before building (Step 1), with a stop for review before P1-01 to P1-03.
 

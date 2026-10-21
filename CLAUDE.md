@@ -33,6 +33,8 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 npm ci && npm run build && npm test
 python3 tools/check_links.py
 cargo run -p timelex-gateway        # http://127.0.0.1:8088/health
+# Database tests (crates/timelex-db) need a throwaway Postgres; see deploy/postgres/README.md.
+# They FAIL without TIMELEX_TEST_DATABASE_URL; TIMELEX_SKIP_DB_TESTS=1 skips them on purpose.
 ```
 Kone develops on **Windows** (`C:\Users\Kone\TimeLex`). Rust, Docker Desktop and `uv` may need installing. Kone is **new to Rust**: explain non-obvious choices briefly, keep domain crates simple and I/O-free, prefer clarity to cleverness.
 
