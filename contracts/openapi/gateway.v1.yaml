@@ -1,25 +1,47 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (walking skeleton). Contract-first: this file leads the code (ADR-0001).
+# Gateway contract v1 (draft 0.2.0). Contract-first: this file leads the code (ADR-0001).
+# Internal design: ADR-0012 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.1.0
+  version: 0.2.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
-    Pre-alpha. Only `/health` and `/v1/meta` exist. Authentication, tenancy and routing arrive in
-    Phase 1 (tasks P1-03, P1-04). Every capability is also exposed as MCP tools; see
-    `contracts/mcp/tools.md`.
+    Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway also authenticates callers and
+    routes three identity operations (`createTenant`, `issueApiKey`, `revokeApiKey`). Everything else
+    arrives with its service. Every capability is also exposed as MCP tools; see `contracts/mcp/tools.md`.
+
+    **Authentication.** Tenant calls carry `Authorization: Bearer tlx_...` (an API key from
+    `issueApiKey` or `createTenant`). The gateway checks the key with the identity service on **every**
+    request, so a revoked key or a removed role stops working at once. Operator calls (`createTenant`)
+    carry the platform operator's credential instead. Any other, missing or malformed credential gets the
+    same 401, whatever the reason.
+
+    **Tenant comes from the credential, never from the request.** The gateway discards any client
+    `X-TimeLex-*` header and the original `Authorization` header before forwarding, and never forwards
+    the API key itself: services receive a short-lived internal token (ADR-0012).
+
+    **Not routable from outside.** `authenticate` (identity) is internal. A request to it through the
+    gateway is a 404, like any unknown path.
+
+    **Limits.** Request bodies larger than 64 KiB get 413. An upstream that does not answer within
+    5 seconds gets 504; one that cannot be reached gets 502. The gateway forwards nothing unless
+    authentication completed. Per-tenant rate limits (429) and usage metering arrive in a later
+    version (P1-04 part b).
   license:
     name: Apache-2.0
     identifier: Apache-2.0
 servers:
   - url: http://127.0.0.1:8088
     description: Local development
+security:
+  - apiKey: []
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Liveness probe
+      security: []
       responses:
         "200":
           description: Gateway is up
@@ -34,6 +56,7 @@ paths:
     get:
       operationId: getMeta
       summary: Build and contract metadata
+      security: []
       responses:
         "200":
           description: Metadata
@@ -51,7 +74,116 @@ paths:
                     required: [activityEvent]
                     properties:
                       activityEvent: { type: string, description: "Activity-event schema version, e.g. 1.0" }
+  /v1/tenants:
+    post:
+      operationId: createTenant
+      summary: Create a firm and its first administrator (platform operators only)
+      description: Routed to identity. Same request and response as `identity.v1.yaml` `createTenant`.
+      security: [{ operatorKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "identity.v1.yaml#/components/schemas/CreateTenantRequest" }
+      responses:
+        "201":
+          description: Firm created. The token in `initialApiKey` is shown only now.
+          content:
+            application/json:
+              schema: { $ref: "identity.v1.yaml#/components/schemas/CreateTenantResponse" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The slug is already taken.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/api-keys:
+    post:
+      operationId: issueApiKey
+      summary: Issue an API key
+      description: Routed to identity. Requires `keys:manage`. Same request and response as `identity.v1.yaml` `issueApiKey`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "identity.v1.yaml#/components/schemas/IssueApiKeyRequest" }
+      responses:
+        "201":
+          description: Key issued. The token is shown only now.
+          content:
+            application/json:
+              schema: { $ref: "identity.v1.yaml#/components/schemas/IssuedApiKey" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/api-keys/{keyId}/revoke:
+    post:
+      operationId: revokeApiKey
+      summary: Revoke an API key
+      description: Routed to identity. Requires `keys:manage`. Takes effect immediately.
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema: { $ref: "identity.v1.yaml#/components/schemas/Uuid" }
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
 components:
+  responses:
+    Invalid:
+      description: A field failed validation. `detail` names the rule; it never echoes a secret.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: |
+        Missing, malformed or unusable credentials (unknown, revoked, expired, owner disabled, firm
+        suspended). Always the same body, so the reason is not revealed.
+      headers:
+        WWW-Authenticate:
+          description: Always `Bearer`.
+          schema: { type: string, const: Bearer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: The credential is valid but lacks the permission this operation needs.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: No such object in the caller's firm (objects of other firms look the same).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooLarge:
+      description: The request body exceeds 64 KiB.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    BadGateway:
+      description: The service behind this route could not be reached. Nothing was changed.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    GatewayTimeout:
+      description: The service did not answer within 5 seconds. The outcome is unknown; check before retrying.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
   schemas:
     Problem:
       description: RFC 9457 problem details (standard error body for all services).
@@ -68,4 +200,8 @@ components:
     apiKey:
       type: http
       scheme: bearer
-      description: Tenant API key (enforced from Phase 1).
+      description: Tenant API key (`tlx_<tenant id>.<secret>`), checked on every request.
+    operatorKey:
+      type: http
+      scheme: bearer
+      description: The platform operator's credential, held by whoever runs the platform. Compared by hash; configured in the gateway's environment (ADR-0012).

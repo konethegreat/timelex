@@ -4,7 +4,7 @@
 openapi: 3.1.0
 info:
   title: TimeLex Identity
-  version: 0.1.0
+  version: 0.2.0
   summary: Tenants, API keys and authentication (pre-alpha).
   description: |
     Pre-alpha. This version covers four operations: create a firm, issue an API key, revoke an API key,
@@ -21,8 +21,13 @@ info:
     The header is accepted and ignored in 0.1.0. Replaying `createTenant` or `issueApiKey` cannot return
     the original token a second time, so a real replay policy needs a design decision first.
 
-    **Callers.** `createTenant` is for a platform operator. `authenticate` is internal, called by the
-    gateway only. Both are protected by the gateway's service identity (task P1-04), not by a tenant key.
+    **Callers (changed in 0.2.0).** Clients never reach this service: it listens on a private interface
+    and only the gateway calls it. It accepts no tenant API key. Every call carries an *internal token*
+    signed by the gateway (see `contracts/internal-auth.md` and ADR-0012), and each operation declares
+    which kind of caller it accepts in `x-required-kind`: `operator` (platform operators, `createTenant`),
+    `principal` (a tenant user or machine, `issueApiKey` and `revokeApiKey`; the tenant, user and
+    permissions come from the verified token, never from the request), or `service` (the gateway itself,
+    `authenticate`). A token of the wrong kind is a 403; a missing or invalid token is a 401.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -30,6 +35,27 @@ servers:
   - url: http://127.0.0.1:8081
     description: Local development (the gateway fronts this in every other environment)
 paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and database reachability
+      description: Answers 200 when the service is up and can reach its database, otherwise 503. No credentials; reachable only on the private interface.
+      security: []
+      responses:
+        "200":
+          description: Up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+        "503":
+          description: The database cannot be reached.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
   /v1/tenants:
     post:
       operationId: createTenant
@@ -38,7 +64,8 @@ paths:
         Creates the firm, its first admin (active, role `admin`) and an initial admin API key, in one
         transaction. Platform operators only. There are no passwords: the returned key is the first
         admin's credential until single sign-on exists.
-      security: [{ operatorKey: [] }]
+      security: [{ internalToken: [] }]
+      x-required-kind: operator
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -53,6 +80,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CreateTenantResponse" }
         "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
           description: The slug is already taken.
@@ -69,7 +98,8 @@ paths:
         an active user. An agent (machine) user can never hold `users:manage`, `keys:manage` or
         `settings:manage`. The firm is the caller's firm; a `userId` from another firm is reported as not
         found.
-      security: [{ apiKey: [] }]
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -87,6 +117,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
   /v1/api-keys/{keyId}/revoke:
     post:
       operationId: revokeApiKey
@@ -94,7 +125,8 @@ paths:
       description: |
         Requires `keys:manage`. Takes effect immediately. Revoking is permanent; issue a new key to
         rotate. A key id from another firm is reported as not found.
-      security: [{ apiKey: [] }]
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
       parameters:
         - name: keyId
           in: path
@@ -106,6 +138,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/ServerError" }
   /v1/authenticate:
     post:
       operationId: authenticate
@@ -116,7 +149,8 @@ paths:
         nothing about why. The reason is recorded in the audit log, not returned.
         `permissions` is the key's scopes limited to what the owner's roles grant **now**, so removing a
         role takes effect on existing keys immediately.
-      security: [{ serviceIdentity: [] }]
+      security: [{ internalToken: [] }]
+      x-required-kind: service
       requestBody:
         required: true
         content:
@@ -129,6 +163,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Principal" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
 components:
   parameters:
     IdempotencyKey:
@@ -150,6 +186,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     Forbidden:
       description: The caller lacks the permission this operation needs.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ServerError:
+      description: Unexpected failure (for example the database). The body never contains internal details.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
@@ -268,15 +309,11 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Permission" }
   securitySchemes:
-    apiKey:
+    internalToken:
       type: http
       scheme: bearer
-      description: A tenant API key (`tlx_...`), verified by the gateway through `authenticate`.
-    operatorKey:
-      type: http
-      scheme: bearer
-      description: A platform-operator credential, held by whoever runs the platform. Enforced by the gateway (P1-04).
-    serviceIdentity:
-      type: http
-      scheme: bearer
-      description: Service-to-service identity for internal calls (P1-04).
+      bearerFormat: JWT
+      description: |
+        A 30-second EdDSA-signed JWT issued by the gateway (`contracts/internal-auth.md`). The `kind`
+        claim must match the operation's `x-required-kind`. Tenant API keys (`tlx_...`) are never
+        accepted here.
