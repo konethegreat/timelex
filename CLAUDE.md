@@ -49,15 +49,17 @@ Kone develops on **Windows** (`C:\Users\Kone\TimeLex`). Rust, Docker Desktop and
 - Use conventional commits; small PRs; update `docs/TASKS.md` statuses and `docs/WORKLOG.md` as you go.
 - Do not claim accuracy, savings or compliance without a measurement or a primary source. Mark unverified claims as such.
 
-## Status at hand-off (20 Oct 2026)
-Built and tested: `timelex-units` (14 tests + doctest), `timelex-types` (7 tests; schema-validated golden example), `timelex-gateway` (3 tests), `workers/py-worker` redaction (19 tests), `@timelex/sdk` stub (3 tests). Everything else is specified in `docs/` and `services/*/README.md`. **No capture, attribution, ledger, billing or trust code exists.**
+## Status (21 Oct 2026, all of Phase 1's first slice is on `main`)
+Built and tested: `timelex-units` (14 tests + doctest), `timelex-types` (7), `timelex-identity` domain rules (58 + doctest), `timelex-db` (bootstrap SQL, `TenantPool`/`TenantTx`, 18 database tests), `timelex-auth` (gateway-signed internal token, 20), `timelex-identity-service` (store, HTTP layer and binary; 16 + 11 tests), `timelex-gateway` (authentication through identity and routing; 13 stub-upstream and 5 end-to-end tests), `workers/py-worker` redaction (19), `@timelex/sdk` stub (3). Database and end-to-end tests need a throwaway Postgres (see Commands). **Still no capture, attribution, ledger, billing or trust code.** Accepted ADRs include 0011 (tenancy and database roles) and 0012 (internal service authentication). Local run guide: `deploy/README.md`.
 
 ## Start here
-1. Help Kone run **T0-R01** (GhostPractice demo/interviews) and **T0-B01** (fee-earner interviews): they decide whether the wedge is right.
-2. **P1-01 → P1-03**: Postgres schemas/roles, tenancy with RLS, identity. Show Kone the schema before applying migrations.
-3. **P1-08**: verify the Rust MCP SDK against the final spec.
-4. **P3-01**: start the synthetic gold-set generator (long pole for Gate A).
-Open items: confirm the Anthropic key-custody pattern in writing (T0-L02, questions in research 07 §7.3); lawyer review of research 03 (T0-L01); trademark check (T0-B02).
+1. Help Kone run **T0-R01** (GhostPractice demo/interviews) and **T0-B01** (fee-earner interviews): they decide whether the wedge is right. Kits are in `docs/validation/`.
+2. **P1-04 part b** (per-tenant rate limits, metering, `Mcp-Method` routing; show the contract changes first), then **P1-05** (vault), **P1-06** (outbox), **P1-15** (`timelex-mcp` adapter).
+3. **P3-01**: start the synthetic gold-set generator (long pole for Gate A).
+Open items: confirm the Anthropic key-custody pattern in writing (T0-L02, questions in research 07 §7.3); lawyer review of research 03 (T0-L01); read the LPC rules from the Gazette (T0-L06); trademark check (T0-B02).
 
-## Update, 20 Oct 2026 (research pass, no product code)
-Research 01, 03, 05 corrected; research 07 (Anthropic terms) and 08 (MCP SDK spike) added; interview kit and demo checklist in `docs/validation/`. ADR amendments are **proposed, not accepted** (0003, 0004, 0005, 0007, 0009). Two things to remember: Anthropic has no African inference region and Fable-class models cannot use zero data retention; GhostPractice is not "Windows on-premise only" and advertises import/export (verify). Step 3 (P1-01 to P1-03) waits for Kone's review.
+## Things to remember
+- Anthropic has no African inference region and Fable-class models cannot use zero data retention (research 07). ADR amendments 0003, 0004, 0005, 0007, 0009 are **proposed, not accepted**.
+- GhostPractice is not "Windows on-premise only" and advertises import/export (research 01 §8; verify at the demo).
+- Postgres stays on **17**: `postgres:18` rejects the Compose volume path (tested 21 Oct 2026); moving to 18 is its own change.
+- Never commit credential-shaped literals, even synthetic ones in tests: GitGuardian flags them. Build test keys at run time.

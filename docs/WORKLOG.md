@@ -4,6 +4,14 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-21: Merged the open PRs
+**Trigger:** Kone asked to merge every open PR and close any that should not be merged.
+- **Merged, in order, with merge commits** (so each stacked PR still applied cleanly after its base landed): #4 identity domain crate, #5 database layer and schema, #6 identity store and contract, #7 P1-04 contracts and ADR-0012, #8 P1-04 part a (internal token, identity HTTP, gateway authentication and routing); then Dependabot #3 (GitHub Actions bumps, pinned by SHA).
+- **Closed, not merged:** #1 `postgres:17` to `postgres:18`. Tested: the container exits because the Compose volume is mounted at `/var/lib/postgresql/data`, a path the 18 image no longer supports. Moving to 18 means changing the mount and re-running the database tests and CI on 18; it needs its own PR.
+- **#2** (`jsonschema` 0.30 to 0.59) conflicted with `Cargo.lock` after the merges; Dependabot was asked to rebase it. Outcome below if resolved this session.
+- GitGuardian flagged synthetic test credentials on #8 (Basic auth header, key-shaped Bearer literal). Fixed by building them at run time; the rule is in CLAUDE.md now.
+- CLAUDE.md status sections refreshed (they still described the skeleton).
+
 ## 2026-10-20 (session 3): Step 3 begins: P1-01 to P1-03 (schema, tenancy, identity domain)
 **Trigger:** Kone approved the Step 1 report and the drafted schema (tenant-in-key tokens, no passwords, identity-only provisioning).
 
