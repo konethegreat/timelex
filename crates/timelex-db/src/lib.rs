@@ -15,6 +15,9 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use timelex_identity::TenantId;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 /// The admin-side SQL files, in the order they must run. Embedded in the binary at build time so a
 /// deployment cannot run them out of order or from the wrong version.
 pub const BOOTSTRAP_FILES: [(&str, &str); 3] = [

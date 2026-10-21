@@ -31,7 +31,7 @@ pub use ids::{ApiKeyId, TenantId, UserId};
 pub use names::{validate_name, Email, TenantSlug, MAX_DISPLAY_NAME, MAX_KEY_NAME};
 pub use role::{Permission, Role, RoleSet};
 pub use rules::{
-    check_admin_continuity, check_key_issuance, validate_new_tenant, KeyIssuanceRequest, NewTenantRequest,
-    TenantBootstrap, UserState, ValidatedKey,
+    check_admin_continuity, check_key_issuance, effective_permissions, require_permission,
+    validate_new_tenant, KeyIssuanceRequest, NewTenantRequest, TenantBootstrap, UserState, ValidatedKey,
 };
 pub use status::{TenantStatus, UserStatus};

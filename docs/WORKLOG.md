@@ -12,7 +12,11 @@ Append an entry at the end of every working session (newest first).
 - PR 1: `timelex-identity` domain crate (pure; 55 unit tests + doctest). PR 2 (stacked on PR 1): bootstrap SQL, identity migration, `timelex-db` crate (`TenantPool`/`TenantTx`), 18 database tests, CI Postgres service, ADR-0011.
 - Applied the SQL for the first time to a throwaway Postgres 17 (trust auth, no passwords); all 18 tests passed first run, then a **mutation check** (policy replaced by `USING (true)`) made 7 of 11 tenancy tests fail, so the tests do bite.
 
-**Not done:** identity store (create tenant, issue key, authenticate), `identity.v1.yaml` OpenAPI contract, gateway-side tenant claim (P1-04).
+**Later in the session (PR 3, stacked on PR 5):** `contracts/openapi/identity.v1.yaml` (validated with `openapi-spec-validator`), two domain helpers (`require_permission`, `effective_permissions`), the DB test harness moved into `timelex_db::testing` (feature `testing`), and the identity store crate `timelex-identity-service`: create firm, issue key, revoke key, authenticate, with 16 database tests. Mutation checks: skipping the usable-key check broke 4 tests; dropping role narrowing broke 1.
+- **Design finding:** a key's permissions are its scopes intersected with the owner's *current* roles, so demoting someone shrinks their existing keys at once.
+- **Open (decide later):** `keys:manage` lets a holder issue a key up to any user's permissions (documented; only admins have it). Idempotency keys (ADR-0010) are accepted but ignored: replaying key issuance cannot return the token twice, so it needs a design decision.
+
+**Not done:** HTTP layer and gateway-side tenant claim (P1-04), users/roles/SSO, audit events.
 **Unverified:** behaviour on Postgres 18 (Dependabot PR open); hosted Postgres with a restricted admin role (the bootstrap needs `CREATEROLE`); performance of the policy on large tables.
 
 ## 2026-10-20 (session 2): Step 1 research pass, no product code

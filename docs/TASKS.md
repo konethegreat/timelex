@@ -50,7 +50,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 |---|---|---|---|---|
 | P1-01 | Postgres + `sqlx` migrations; one schema and role per service | | Role cannot read other schemas (test) | ✅ ([ADR-0011](adr/0011-tenancy-enforcement-and-database-roles.md); 7 tests) |
 | P1-02 | Tenancy middleware + row-level security | P1-01 | Cross-tenant read fails in property test | ✅ `TenantPool`/`TenantTx` + 11 tests incl. property tests; gateway-side tenant claim is P1-04 |
-| P1-03 | `identity`: tenants, users, roles, API keys | P1-02 | Create tenant, issue key, authenticate | 🔄 domain crate (55 tests) and schema done; identity store (create, issue, authenticate) and OpenAPI contract next |
+| P1-03 | `identity`: tenants, users, roles, API keys | P1-02 | Create tenant, issue key, authenticate | ✅ library: [contract](../contracts/openapi/identity.v1.yaml), domain crate (58 tests), schema, store with 16 database tests (create firm, issue, revoke, authenticate). HTTP layer waits for P1-04; users/roles/SSO and idempotency keys are later tasks |
 | P1-04 | `gateway`: authN, rate limits, metering, header-based routing | P1-03 | Authenticated call routes to a service | ⬜ |
 | P1-05 | `vault` v0: envelope encryption, write-only API, key test, audit. Stored-key mode only; WIF waits on T0-L05 ([ADR-0004 proposal](adr/0004-byo-keys-and-secrets-vault.md)) | P1-02 | Secret never returned, never logged (test) | ⬜ |
 | P1-06 | Outbox + relay (Postgres) | P1-01 | Event published exactly-once-effect with idempotent consumer | ⬜ |

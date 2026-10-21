@@ -21,7 +21,8 @@ pub enum Permission {
     UsersRead,
     /// Invite, change and disable users and their roles.
     UsersManage,
-    /// Issue and revoke API keys.
+    /// Issue and revoke API keys. Powerful: a holder can issue a key up to any user's permissions, so
+    /// treat it like admin (only the admin role has it).
     KeysManage,
     /// Change firm settings, including autonomy settings. Humans only (AUTONOMY.md).
     SettingsManage,

@@ -11,6 +11,10 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Test support (a throwaway database per test). Enable as a dev-dependency feature only.
+testing = ["uuid/v4"]
+
 [dependencies]
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
 timelex-identity = { path = "../timelex-identity" }
@@ -19,4 +23,5 @@ uuid = "1"
 
 [dev-dependencies]
 proptest = "1"
-uuid = { version = "1", features = ["v4"] }
+timelex-db = { path = ".", features = ["testing"] }
+

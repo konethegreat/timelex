@@ -1,0 +1,24 @@
+[package]
+name = "timelex-identity-service"
+description = "TimeLex identity service: create a firm, issue and revoke API keys, authenticate. Library first; the HTTP layer follows the contract in contracts/openapi/identity.v1.yaml."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+timelex-identity = { path = "../../crates/timelex-identity" }
+timelex-db = { path = "../../crates/timelex-db" }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
+time = "0.3"
+uuid = { version = "1", features = ["v4"] }
+getrandom = "0.4"
+
+[dev-dependencies]
+timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
