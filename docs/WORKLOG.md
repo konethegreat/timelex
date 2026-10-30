@@ -4,6 +4,24 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-30 (even later): P1-05 vault v0 starts with the contract
+**Trigger:** After gateway part b merged (#18), Kone chose P1-05 (vault v0) next, with REST only in this version (MCP waits for P1-15) and a validator trait plus one real Anthropic check.
+
+**Done (increment 1)**
+- [`contracts/openapi/vault.v1.yaml`](../contracts/openapi/vault.v1.yaml) 0.1.0: `PUT /v1/secrets/{kind}` (create or replace), `GET /v1/secrets` (metadata only), `POST /v1/secrets/{id}/test`, `POST /v1/secrets/{id}/rotate`, `DELETE /v1/secrets/{id}` (revoke, idempotent). Typed kinds (`anthropic_api_key`, `m365_oauth`, `google_oauth`, `generic_api_key`), allowed hosts that may narrow but never widen a kind's defaults, and metadata that never contains a value.
+- Callers are internal tokens of kind `principal` holding `settings:manage`; the firm comes from the token (ADR-0012). Only the gateway reaches the service.
+- Vault README, architecture table and task list updated. OpenAPI validated with `openapi-spec-validator` (all three contracts pass).
+
+**Decisions and why**
+- **REST only in v0.** The lease (`/internal/v1/secrets/{id}/lease`) has no consumer until `mcp-host` (P1-13) and is the most dangerous surface, so it lands with its first caller and its own tests. The MCP tools are served through the P1-15 adapter, not hand-rolled twice.
+- **`settings:manage` rather than a new permission.** Secrets are firm settings and the permission is human-only; adding `secrets:*` would mean touching identity's permission model and contract for no v0 gain. A dedicated permission can come with the lease, when non-human callers need scoped access.
+- **Write-only by shape.** There is no GET by id and no endpoint that returns a value; a caller gets the last four characters so two keys can be told apart.
+- **Revoke destroys the wrapped data key**, not just a flag, so a later database copy cannot decrypt the value.
+- **Test is not use.** `lastTestedAt` and `lastUsedAt` are separate; only an internal caller using the secret sets the latter.
+- **KEK from the environment behind a `KeyWrapper` trait** for 0.1.0 (KMS and WIF wait on T0-L05), so the storage format does not change when a KMS adapter arrives.
+
+**Next:** increment 2 — `crates/timelex-vault` (kinds, validation, zeroising value, envelope encryption) plus the `vault` schema, bootstrap role and store with database tests.
+
 ## 2026-10-30 (later still): P1-04 part b — MCP header routing
 **Trigger:** PR B merged (#17); finishing part b with `POST /mcp`.
 

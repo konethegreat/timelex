@@ -1,0 +1,359 @@
+# Written by Kone Tshivhinda & Claude
+# Vault service contract v1 (draft). Contract-first: this file leads the code (ADR-0001).
+# Design: ADR-0004 (envelope encryption, write-only API, audit). Data: services/vault/migrations.
+openapi: 3.1.0
+info:
+  title: TimeLex Vault
+  version: 0.1.0
+  summary: Custody of a firm's provider keys (pre-alpha).
+  description: |
+    Pre-alpha, stored-key mode only. The vault holds each firm's bring-your-own provider credentials
+    under envelope encryption and never returns a value: secrets can be created, listed as metadata,
+    tested, rotated and revoked (ADR-0004). Workload Identity Federation and the internal short-lived
+    lease used by `mcp-host` and `capture-hub` are not in this version.
+
+    **Callers.** Only the gateway reaches this service, over a private interface, with an *internal
+    token* signed by the gateway (ADR-0012). Every secrets operation requires a token of kind
+    `principal` whose holder has the `settings:manage` permission; the firm, user and permissions come
+    from the verified token, never from the request. A token of the wrong kind or without the
+    permission is 403; a missing or invalid token is 401.
+
+    **Write-only.** No operation returns a secret value, not even to its owner. The response carries
+    the last four characters so a firm can tell two keys apart. Values never appear in logs, traces or
+    error bodies.
+
+    **Kinds and hosts.** A secret's kind decides which hosts it may be used against. A caller may
+    narrow the list but not widen it beyond the kind's default; `generic_api_key` has no default and
+    must name its hosts.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8082
+    description: Local development (the gateway fronts this in every other environment)
+tags:
+  - name: secrets
+    description: Store, list, test, rotate and revoke provider credentials. Values are never returned.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and database reachability
+      description: Answers 200 when the service is up and can reach its database, otherwise 503. No credentials; reachable only on the private interface.
+      security: []
+      responses:
+        "200":
+          description: Up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+        "503":
+          description: The database cannot be reached.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /v1/secrets:
+    get:
+      tags: [secrets]
+      operationId: listSecrets
+      summary: List the firm's secrets as metadata
+      description: Returns metadata for every secret of the caller's firm, ordered by kind and then label. Values are never included. Revoked secrets are hidden unless asked for.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - name: includeRevoked
+          in: query
+          required: false
+          description: Include secrets that have been revoked.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: The firm's secrets.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/secrets/{kind}:
+    put:
+      tags: [secrets]
+      operationId: putSecret
+      summary: Create or replace the firm's secret of one kind
+      description: |
+        Stores a value for the given kind. If the firm already has a live secret of that kind, its
+        value is replaced under the same id (a rotation); `label` and `allowedHosts` are updated when
+        supplied. Otherwise a secret is created. This is an upsert, so replaying the same request is
+        safe. `allowedHosts` may narrow the kind's default hosts but never widen them; an attempt to
+        name a host outside the default is a 400.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - $ref: "#/components/parameters/Kind"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PutSecretRequest" }
+      responses:
+        "200":
+          description: The existing secret of that kind was replaced. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretMetadata" }
+        "201":
+          description: A new secret was stored. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretMetadata" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/secrets/{id}/test:
+    post:
+      tags: [secrets]
+      operationId: testSecret
+      summary: Check that a stored secret still works
+      description: |
+        Asks the secret's provider whether the credential is accepted. `anthropic_api_key` makes a
+        real read-only call; other kinds are checked for shape only in 0.1.0. The value is decrypted
+        in memory for the call and never leaves the process. Testing does not count as use: it sets
+        `lastTestedAt`, not `lastUsedAt`.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - $ref: "#/components/parameters/SecretId"
+      responses:
+        "200":
+          description: The provider accepted the secret.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The secret has been revoked and cannot be tested.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: The provider rejected the secret. `detail` says so; the provider's own message is not relayed.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "502":
+          description: The provider could not be reached, or answered in a way that says nothing about the secret.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/secrets/{id}/rotate:
+    post:
+      tags: [secrets]
+      operationId: rotateSecret
+      summary: Replace a secret's value under the same id
+      description: Keeps the id, label and allowed hosts; replaces the value and writes a new encrypted version. The old value is overwritten, not kept.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - $ref: "#/components/parameters/SecretId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RotateRequest" }
+      responses:
+        "200":
+          description: The secret was rotated. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretMetadata" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The secret has been revoked and cannot be rotated.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/secrets/{id}:
+    delete:
+      tags: [secrets]
+      operationId: revokeSecret
+      summary: Revoke a secret
+      description: Marks the secret revoked and destroys its wrapped data key, so it can never be decrypted again. Revoking an already-revoked secret is a 204 (idempotent).
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - $ref: "#/components/parameters/SecretId"
+      responses:
+        "204":
+          description: Revoked, or already revoked.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/Internal" }
+components:
+  securitySchemes:
+    internalToken:
+      type: http
+      scheme: bearer
+      description: A short-lived token signed by the gateway (ADR-0012, `contracts/internal-auth.md`). Never a tenant API key.
+  parameters:
+    Kind:
+      name: kind
+      in: path
+      required: true
+      description: The provider family of the secret.
+      schema: { $ref: "#/components/schemas/SecretKind" }
+    SecretId:
+      name: id
+      in: path
+      required: true
+      description: The secret's id, as returned in its metadata.
+      schema: { type: string, format: uuid }
+  schemas:
+    SecretKind:
+      type: string
+      description: |
+        `anthropic_api_key` (a workspace or service-account key discussed in ADR-0004; never an Admin
+        key), `m365_oauth`, `google_oauth` (refresh tokens), or `generic_api_key` for any other
+        provider, which must name its hosts.
+      enum: [anthropic_api_key, m365_oauth, google_oauth, generic_api_key]
+    SecretMetadata:
+      type: object
+      description: What a caller may know about a secret. Never the value.
+      required: [id, kind, label, lastFour, allowedHosts, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/SecretKind" }
+        label:
+          type: string
+          description: A name chosen by the firm, for example "Anthropic (billing workspace)".
+          minLength: 1
+          maxLength: 120
+        lastFour:
+          type: string
+          description: The last four characters of the value, or fewer for a very short value. Never more than four.
+          maxLength: 4
+        allowedHosts:
+          type: array
+          description: The hosts this secret may be used against. Always within the kind's default.
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lastTestedAt:
+          type: string
+          format: date-time
+          description: When `test` last ran, whether it passed or failed. Absent if never tested.
+        lastUsedAt:
+          type: string
+          format: date-time
+          description: When an internal caller last used the secret. Absent if never used; testing does not count.
+        revokedAt:
+          type: string
+          format: date-time
+          description: Absent while the secret is live.
+    SecretList:
+      type: object
+      required: [secrets]
+      properties:
+        secrets:
+          type: array
+          items: { $ref: "#/components/schemas/SecretMetadata" }
+    PutSecretRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: The credential. Never echoed, never logged.
+          minLength: 8
+          maxLength: 4096
+        label:
+          type: string
+          description: Defaults to the kind's human name.
+          minLength: 1
+          maxLength: 120
+        allowedHosts:
+          type: array
+          description: May narrow the kind's default hosts, never widen them. Required for generic_api_key.
+          items:
+            type: string
+            description: A lowercase DNS name, without scheme, port or path.
+          maxItems: 16
+    RotateRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 8
+          maxLength: 4096
+    TestResult:
+      type: object
+      required: [ok, checkedAt]
+      properties:
+        ok: { type: boolean, const: true }
+        checkedAt: { type: string, format: date-time }
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+  responses:
+    Invalid:
+      description: A field failed validation. `detail` names the rule; it never echoes a secret.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing, malformed or invalid internal token. Always the same body.
+      headers:
+        WWW-Authenticate:
+          description: Always `Bearer`.
+          schema: { type: string, const: Bearer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: A valid token of the wrong kind, or one without `settings:manage`.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: No such secret in the caller's firm (secrets of other firms look the same).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooLarge:
+      description: The request body exceeds 64 KiB.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Internal:
+      description: The vault or its database failed. `detail` is never included.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
