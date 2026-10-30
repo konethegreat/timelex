@@ -25,16 +25,22 @@ use uuid::Uuid;
 
 use crate::config::{sha256, Config, OPERATOR_RATE_LIMIT_BURST, OPERATOR_RATE_LIMIT_PER_MINUTE};
 use crate::limits::{Decision, RateKey, RateLimiter};
+use crate::mcp::{self, Table};
 use crate::meter::{now_rfc3339, CallerKind, Meter, UsageRecord, UsageSnapshot};
 
 /// Largest request body the gateway will read and forward.
 pub const MAX_BODY_BYTES: usize = 64 * 1024;
+
+const MCP_VERSION: header::HeaderName = header::HeaderName::from_static("mcp-protocol-version");
+const MCP_METHOD: header::HeaderName = header::HeaderName::from_static("mcp-method");
+const MCP_NAME: header::HeaderName = header::HeaderName::from_static("mcp-name");
 
 struct Inner {
     config: Config,
     http: reqwest::Client,
     limiter: RateLimiter,
     meter: Meter,
+    tools: Table,
 }
 
 /// Shared gateway state: configuration, one pooled HTTP client, the buckets and the meter.
@@ -63,6 +69,7 @@ impl GatewayState {
             http,
             limiter,
             meter: Meter::stdout(),
+            tools: Table::built_in()?,
         })))
     }
 
@@ -78,6 +85,7 @@ pub fn routes(state: GatewayState) -> Router {
         .route("/v1/tenants", post(create_tenant))
         .route("/v1/api-keys", post(issue_api_key))
         .route("/v1/api-keys/{key_id}/revoke", post(revoke_api_key))
+        .route("/mcp", post(mcp))
         .with_state(state)
 }
 
@@ -100,6 +108,8 @@ async fn usage(State(state): State<GatewayState>) -> Json<UsageSnapshot> {
 enum Reject {
     Unauthorized,
     Invalid(&'static str),
+    NotFound(&'static str),
+    NotImplemented(&'static str),
     TooLarge,
     RateLimited(u64),
     BadGateway,
@@ -135,6 +145,13 @@ impl IntoResponse for Reject {
                 StatusCode::BAD_REQUEST,
                 "invalid-request",
                 "Invalid request",
+                Some(d),
+            ),
+            Reject::NotFound(d) => problem(StatusCode::NOT_FOUND, "not-found", "Not found", Some(d)),
+            Reject::NotImplemented(d) => problem(
+                StatusCode::NOT_IMPLEMENTED,
+                "not-implemented",
+                "Not implemented",
                 Some(d),
             ),
             Reject::TooLarge => problem(
@@ -187,15 +204,21 @@ fn upstream_failure(e: &reqwest::Error) -> Reject {
 
 // ---------- credentials ----------
 
-/// The one bearer token in the request, or `None` for anything else (missing, repeated, another
-/// scheme, empty, absurdly long). Callers answer `None` with the same 401 as a wrong key.
-fn bearer(headers: &HeaderMap) -> Option<&str> {
-    let mut all = headers.get_all(header::AUTHORIZATION).iter();
+/// Exactly one value for `name`, or `None` when it is absent or repeated. Accepts no second opinion:
+/// a header the gateway routes on must be unambiguous, since the service will re-check it.
+fn single_header<'a>(headers: &'a HeaderMap, name: &header::HeaderName) -> Option<&'a str> {
+    let mut all = headers.get_all(name).iter();
     let (first, rest) = (all.next()?, all.next());
     if rest.is_some() {
         return None;
     }
-    let (scheme, token) = first.to_str().ok()?.split_once(' ')?;
+    first.to_str().ok()
+}
+
+/// The one bearer token in the request, or `None` for anything else (missing, repeated, another
+/// scheme, empty, absurdly long). Callers answer `None` with the same 401 as a wrong key.
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    let (scheme, token) = single_header(headers, &header::AUTHORIZATION)?.split_once(' ')?;
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty() && token.len() <= 200 && !token.contains(' '))
         .then_some(token)
 }
@@ -264,17 +287,24 @@ impl GatewayState {
         })
     }
 
-    /// Identify the caller and mint the internal token to forward with.
-    async fn internal_token(&self, who: Who, headers: &HeaderMap) -> Result<(Caller, String), Reject> {
+    /// Identify the firm behind the presented API key. Used by the tenant-facing REST routes and by
+    /// `/mcp`. A 401 here means the key is not usable; nothing else is the caller's business.
+    async fn tenant_principal(&self, headers: &HeaderMap) -> Result<Principal, Reject> {
         let presented = bearer(headers).ok_or(Reject::Unauthorized)?;
+        self.authenticate(presented).await
+    }
+
+    /// Identify the caller and mint the internal token to forward to identity with.
+    async fn internal_token(&self, who: Who, headers: &HeaderMap) -> Result<(Caller, String), Reject> {
         let caller = match who {
             Who::Operator => {
+                let presented = bearer(headers).ok_or(Reject::Unauthorized)?;
                 if !self.is_operator(presented) {
                     return Err(Reject::Unauthorized);
                 }
                 Caller::Operator
             }
-            Who::Tenant => Caller::Principal(self.authenticate(presented).await?),
+            Who::Tenant => Caller::Principal(self.tenant_principal(headers).await?),
         };
         let token = self
             .0
@@ -298,26 +328,51 @@ impl GatewayState {
             request = request.header(header::CONTENT_TYPE, "application/json").body(b);
         }
         let upstream = request.send().await.map_err(|e| upstream_failure(&e))?;
-        let status = upstream.status();
-        // A 401 here means identity refused *our* token (misconfiguration), and a 5xx is its own
-        // failure; neither is the client's business, so neither is relayed.
-        if status == StatusCode::UNAUTHORIZED || status.is_server_error() {
-            return Err(Reject::BadGateway);
-        }
-        let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
-        let cache_control = upstream.headers().get(header::CACHE_CONTROL).cloned();
-        let bytes = upstream.bytes().await.map_err(|e| upstream_failure(&e))?;
-        let len = bytes.len() as u64;
-        let mut response = Response::new(Body::from(bytes));
-        *response.status_mut() = status;
-        if let Some(v) = content_type {
-            response.headers_mut().insert(header::CONTENT_TYPE, v);
-        }
-        if let Some(v) = cache_control {
-            response.headers_mut().insert(header::CACHE_CONTROL, v);
-        }
-        Ok((response, len))
+        relay_response(upstream).await
     }
+
+    /// Send a request to an already-resolved URL with an allow-list of headers, and relay the answer.
+    async fn relay(
+        &self,
+        url: &str,
+        token: String,
+        body: Bytes,
+        headers: &[(&'static str, String)],
+    ) -> Result<(Response, u64), Reject> {
+        let mut request = self.0.http.post(url).bearer_auth(token);
+        for (name, value) in headers {
+            request = request.header(*name, value);
+        }
+        let upstream = request
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| upstream_failure(&e))?;
+        relay_response(upstream).await
+    }
+}
+
+/// Relay a service's answer, with its size. A 401 means the service refused *our* token
+/// (misconfiguration) and a 5xx is its own failure; neither is the client's business, so neither is
+/// relayed and both become a 502.
+async fn relay_response(upstream: reqwest::Response) -> Result<(Response, u64), Reject> {
+    let status = upstream.status();
+    if status == StatusCode::UNAUTHORIZED || status.is_server_error() {
+        return Err(Reject::BadGateway);
+    }
+    let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
+    let cache_control = upstream.headers().get(header::CACHE_CONTROL).cloned();
+    let bytes = upstream.bytes().await.map_err(|e| upstream_failure(&e))?;
+    let len = bytes.len() as u64;
+    let mut response = Response::new(Body::from(bytes));
+    *response.status_mut() = status;
+    if let Some(v) = content_type {
+        response.headers_mut().insert(header::CONTENT_TYPE, v);
+    }
+    if let Some(v) = cache_control {
+        response.headers_mut().insert(header::CACHE_CONTROL, v);
+    }
+    Ok((response, len))
 }
 
 #[derive(Clone, Copy)]
@@ -326,34 +381,31 @@ enum Who {
     Tenant,
 }
 
-/// Which route a request took, for the meter.
-#[derive(Clone, Copy)]
-struct Route {
-    label: &'static str,
-    service: &'static str,
-}
-
 /// The clock and labels for one request, so every exit path records exactly one line.
 struct Trip {
-    route: Route,
+    label: &'static str,
     method: Method,
     started: Instant,
 }
 
 impl Trip {
-    fn new(route: Route, method: Method) -> Self {
+    fn new(label: &'static str, method: Method) -> Self {
         Self {
-            route,
+            label,
             method,
             started: Instant::now(),
         }
     }
 
-    /// Record the request as it ended. `caller` is `None` when authentication failed.
+    /// Record the request as it ended. `caller` is `None` when authentication failed; `service` and
+    /// `tool` are `None` when the request was refused before routing named them.
+    #[allow(clippy::too_many_arguments)]
     fn done(
         &self,
         state: &GatewayState,
         caller: Option<&Caller>,
+        service: Option<&str>,
+        tool: Option<&str>,
         status: StatusCode,
         bytes_in: u64,
         bytes_out: u64,
@@ -376,8 +428,9 @@ impl Trip {
             tenant_id: tenant,
             user_id: user,
             key_id: key,
-            route: self.route.label,
-            service: self.route.service,
+            route: self.label,
+            service,
+            tool,
             method: self.method.to_string(),
             status: status.as_u16(),
             duration_ms: self.started.elapsed().as_millis() as u64,
@@ -394,13 +447,19 @@ impl Trip {
 ///
 /// `path` is `None` when the route's parameter is malformed: the caller is authenticated first (so the
 /// answer never depends on who is asking) and then gets a 400.
-async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String>, req: Request) -> Response {
-    let trip = Trip::new(route, req.method().clone());
+async fn handle(
+    state: GatewayState,
+    who: Who,
+    label: &'static str,
+    path: Option<String>,
+    req: Request,
+) -> Response {
+    let trip = Trip::new(label, req.method().clone());
     let (caller, token) = match state.internal_token(who, req.headers()).await {
         Ok(identified) => identified,
         Err(reject) => {
             let response = reject.into_response();
-            trip.done(&state, None, response.status(), 0, 0, false);
+            trip.done(&state, None, None, None, response.status(), 0, 0, false);
             return response;
         }
     };
@@ -416,12 +475,12 @@ async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String
     } = state.0.limiter.check(key, Instant::now())
     {
         let response = Reject::RateLimited(retry_after_seconds).into_response();
-        trip.done(&state, Some(&caller), response.status(), 0, 0, true);
+        trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, true);
         return response;
     }
     let Some(path) = path else {
         let response = Reject::Invalid("keyId is not a UUID").into_response();
-        trip.done(&state, Some(&caller), response.status(), 0, 0, false);
+        trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, false);
         return response;
     };
     let body = match to_bytes(req.into_body(), MAX_BODY_BYTES).await {
@@ -432,6 +491,8 @@ async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String
             trip.done(
                 &state,
                 Some(&caller),
+                Some("identity"),
+                None,
                 response.status(),
                 MAX_BODY_BYTES as u64 + 1,
                 0,
@@ -446,6 +507,8 @@ async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String
             trip.done(
                 &state,
                 Some(&caller),
+                Some("identity"),
+                None,
                 response.status(),
                 bytes_in,
                 bytes_out,
@@ -455,26 +518,34 @@ async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String
         }
         Err(reject) => {
             let response = reject.into_response();
-            trip.done(&state, Some(&caller), response.status(), bytes_in, 0, false);
+            trip.done(
+                &state,
+                Some(&caller),
+                Some("identity"),
+                None,
+                response.status(),
+                bytes_in,
+                0,
+                false,
+            );
             response
         }
     }
 }
 
 async fn create_tenant(State(s): State<GatewayState>, req: Request) -> Response {
-    let route = Route {
-        label: "tenants.create",
-        service: "identity",
-    };
-    handle(s, Who::Operator, route, Some("/v1/tenants".into()), req).await
+    handle(
+        s,
+        Who::Operator,
+        "tenants.create",
+        Some("/v1/tenants".into()),
+        req,
+    )
+    .await
 }
 
 async fn issue_api_key(State(s): State<GatewayState>, req: Request) -> Response {
-    let route = Route {
-        label: "apiKeys.issue",
-        service: "identity",
-    };
-    handle(s, Who::Tenant, route, Some("/v1/api-keys".into()), req).await
+    handle(s, Who::Tenant, "apiKeys.issue", Some("/v1/api-keys".into()), req).await
 }
 
 async fn revoke_api_key(State(s): State<GatewayState>, Path(key_id): Path<String>, req: Request) -> Response {
@@ -482,11 +553,159 @@ async fn revoke_api_key(State(s): State<GatewayState>, Path(key_id): Path<String
     let path = Uuid::parse_str(&key_id)
         .ok()
         .map(|key| format!("/v1/api-keys/{}/revoke", key.hyphenated()));
-    let route = Route {
-        label: "apiKeys.revoke",
-        service: "identity",
+    handle(s, Who::Tenant, "apiKeys.revoke", path, req).await
+}
+
+// ---------- MCP ----------
+
+/// Route one MCP request from its headers. The gateway names the owning service from the table and
+/// forwards the body untouched, carrying only the headers the protocol needs and the `Origin` the
+/// service must re-check. It never parses the body; the service does, and re-checks these headers.
+async fn mcp(State(state): State<GatewayState>, req: Request) -> Response {
+    let trip = Trip::new("mcp.call", req.method().clone());
+    let principal = match state.tenant_principal(req.headers()).await {
+        Ok(principal) => principal,
+        Err(reject) => {
+            let response = reject.into_response();
+            trip.done(&state, None, None, None, response.status(), 0, 0, false);
+            return response;
+        }
     };
-    handle(s, Who::Tenant, route, path, req).await
+    let caller = Caller::Principal(principal.clone());
+    let key = RateKey::Tenant(principal.tenant.as_uuid());
+    if let Decision {
+        allowed: false,
+        retry_after_seconds,
+    } = state.0.limiter.check(key, Instant::now())
+    {
+        let response = Reject::RateLimited(retry_after_seconds).into_response();
+        trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, true);
+        return response;
+    }
+
+    let headers = req.headers();
+    let tool = match mcp::classify(
+        single_header(headers, &MCP_VERSION),
+        single_header(headers, &MCP_METHOD),
+        single_header(headers, &MCP_NAME),
+    ) {
+        Ok(mcp::Outcome::ToolCall(tool)) => tool.to_owned(),
+        Ok(mcp::Outcome::Unrouted) => {
+            let response = Reject::NotImplemented("this MCP method is not routed yet").into_response();
+            trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, false);
+            return response;
+        }
+        Err(detail) => {
+            let response = Reject::Invalid(detail).into_response();
+            trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, false);
+            return response;
+        }
+    };
+    let Some(service) = state.0.tools.service_for(&tool).map(str::to_owned) else {
+        let response = Reject::NotFound("the tool is not in the routing table").into_response();
+        trip.done(
+            &state,
+            Some(&caller),
+            None,
+            Some(&tool),
+            response.status(),
+            0,
+            0,
+            false,
+        );
+        return response;
+    };
+    let Some(base) = state.0.config.service_url(&service) else {
+        let response = Reject::NotImplemented("the tool's service has no configured URL").into_response();
+        trip.done(
+            &state,
+            Some(&caller),
+            Some(&service),
+            Some(&tool),
+            response.status(),
+            0,
+            0,
+            false,
+        );
+        return response;
+    };
+    let token = match state.0.config.signer.sign(&service, &caller) {
+        Ok(token) => token,
+        Err(_) => {
+            let response = Reject::Internal.into_response();
+            trip.done(
+                &state,
+                Some(&caller),
+                Some(&service),
+                Some(&tool),
+                response.status(),
+                0,
+                0,
+                false,
+            );
+            return response;
+        }
+    };
+
+    // Only these headers are rebuilt for the service; nothing else the client sent travels on.
+    let mut extra: Vec<(&'static str, String)> = Vec::with_capacity(6);
+    let content_type = single_header(headers, &header::CONTENT_TYPE).unwrap_or("application/json");
+    extra.push(("content-type", content_type.to_owned()));
+    extra.push(("mcp-protocol-version", mcp::PROTOCOL_VERSION.to_owned()));
+    extra.push(("mcp-method", "tools/call".to_owned()));
+    extra.push(("mcp-name", tool.clone()));
+    if let Some(origin) = single_header(headers, &header::ORIGIN) {
+        extra.push(("origin", origin.to_owned()));
+    }
+
+    let body = match to_bytes(req.into_body(), MAX_BODY_BYTES).await {
+        Ok(body) => body,
+        Err(_) => {
+            let response = Reject::TooLarge.into_response();
+            trip.done(
+                &state,
+                Some(&caller),
+                Some(&service),
+                Some(&tool),
+                response.status(),
+                MAX_BODY_BYTES as u64 + 1,
+                0,
+                false,
+            );
+            return response;
+        }
+    };
+    let bytes_in = body.len() as u64;
+    let url = format!("{base}/mcp");
+    match state.relay(&url, token, body, &extra).await {
+        Ok((response, bytes_out)) => {
+            trip.done(
+                &state,
+                Some(&caller),
+                Some(&service),
+                Some(&tool),
+                response.status(),
+                bytes_in,
+                bytes_out,
+                false,
+            );
+            response
+        }
+        Err(reject) => {
+            let response = reject.into_response();
+            trip.done(
+                &state,
+                Some(&caller),
+                Some(&service),
+                Some(&tool),
+                response.status(),
+                bytes_in,
+                0,
+                false,
+            );
+            response
+        }
+    }
 }
 
 #[cfg(test)]

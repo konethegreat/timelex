@@ -121,7 +121,14 @@ fn happy(s: &Seen) -> (StatusCode, String, Duration) {
 struct Gw {
     app: Router,
     internal: Router,
-    verifier: Verifier,
+    public_base64: String,
+}
+
+impl Gw {
+    /// A verifier for tokens the gateway signed for `audience`.
+    fn verifier(&self, audience: &str) -> Verifier {
+        Verifier::from_config(audience, &format!("k1={}", self.public_base64)).unwrap()
+    }
 }
 
 /// The default budgets, unless a test asks for a smaller one.
@@ -130,11 +137,18 @@ fn gateway(identity_url: String, timeout: Duration) -> Gw {
 }
 
 fn gateway_with(identity_url: String, timeout: Duration, per_minute: u32, burst: u32) -> Gw {
+    gateway_services(&[("identity", identity_url)], timeout, per_minute, burst)
+}
+
+fn gateway_services(urls: &[(&str, String)], timeout: Duration, per_minute: u32, burst: u32) -> Gw {
     let kp = generate_keypair().unwrap();
     let config = Config {
         signer: timelex_auth::Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap(),
         operator_key_hashes: vec![sha256(OPERATOR_KEY.as_str())],
-        service_urls: HashMap::from([("identity".to_owned(), identity_url)]),
+        service_urls: urls
+            .iter()
+            .map(|(name, url)| ((*name).to_owned(), url.clone()))
+            .collect(),
         upstream_timeout: timeout,
         rate_limit_per_minute: per_minute,
         rate_limit_burst: burst,
@@ -144,7 +158,7 @@ fn gateway_with(identity_url: String, timeout: Duration, per_minute: u32, burst:
     Gw {
         app: gateway.public,
         internal: gateway.internal,
-        verifier: Verifier::from_config("identity", &format!("k1={}", kp.public_base64)).unwrap(),
+        public_base64: kp.public_base64,
     }
 }
 
@@ -166,7 +180,11 @@ async fn call(app: &Router, method: Method, path: &str, extra: &[(&str, &str)], 
         }
         None => Body::empty(),
     };
-    let r = app.clone().oneshot(req.body(body).unwrap()).await.unwrap();
+    send(app, req.body(body).unwrap()).await
+}
+
+async fn send(app: &Router, req: Request) -> Reply {
+    let r = app.clone().oneshot(req).await.unwrap();
     let (parts, body) = r.into_parts();
     Reply {
         status: parts.status,
@@ -253,7 +271,7 @@ async fn a_tenant_call_is_authenticated_then_forwarded_with_a_principal_token() 
         ("POST", "/v1/authenticate")
     );
     let who = gw
-        .verifier
+        .verifier("identity")
         .verify(
             auth.header("authorization")
                 .unwrap()
@@ -272,7 +290,7 @@ async fn a_tenant_call_is_authenticated_then_forwarded_with_a_principal_token() 
     assert_eq!((fwd.method.as_str(), fwd.path.as_str()), ("POST", "/v1/api-keys"));
     assert_eq!(fwd.body, body);
     let verified = gw
-        .verifier
+        .verifier("identity")
         .verify(
             fwd.header("authorization")
                 .unwrap()
@@ -416,7 +434,7 @@ async fn only_the_configured_operator_key_may_create_firms() {
     let calls = s.calls();
     assert_eq!(calls.len(), 1, "operator calls never go through authenticate");
     let verified = gw
-        .verifier
+        .verifier("identity")
         .verify(
             calls[0]
                 .header("authorization")
@@ -755,4 +773,361 @@ async fn usage_totals_are_served_on_the_internal_router_only() {
             .status,
         StatusCode::NOT_FOUND
     );
+}
+
+// ---------- MCP routing ----------
+
+async fn mcp_call(app: &Router, token: &str, headers: &[(&str, &str)], body: &str) -> Reply {
+    let mut req = Request::builder()
+        .method(Method::POST)
+        .uri("/mcp")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    send(app, req.body(Body::from(body.to_owned())).unwrap()).await
+}
+
+fn mcp_headers<'a>(method: &'a str, name: Option<&'a str>) -> Vec<(&'a str, &'a str)> {
+    let mut headers = vec![("mcp-protocol-version", "2026-07-28"), ("mcp-method", method)];
+    if let Some(name) = name {
+        headers.push(("mcp-name", name));
+    }
+    headers
+}
+
+fn tools_call_body(name: &str) -> String {
+    json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": {"limit": 5}}
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn a_tools_call_reaches_the_owning_service_with_the_protocol_headers() {
+    let identity = stub(happy).await;
+    let answer = json!({"jsonrpc": "2.0", "id": 7, "result": {"ok": true}}).to_string();
+    let service_answer = answer.clone();
+    let vault = stub(move |_| (StatusCode::OK, service_answer.clone(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+
+    let body = tools_call_body("list_secrets");
+    let mut headers = mcp_headers("tools/call", Some("list_secrets"));
+    headers.push(("content-type", "application/json"));
+    headers.push(("origin", "https://app.timelex.example"));
+    headers.push(("cookie", "session=abc"));
+    headers.push(("x-timelex-tenant", "another-firm"));
+    let r = mcp_call(&gw.app, TENANT_KEY.as_str(), &headers, &body).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.text, answer, "the service's answer is relayed");
+
+    // Identity authenticated the key; the tool call itself went only to the owning service.
+    assert_eq!(identity.calls().len(), 1);
+    assert_eq!(identity.calls()[0].path, "/v1/authenticate");
+    let calls = vault.calls();
+    assert_eq!(calls.len(), 1);
+    let fwd = &calls[0];
+    assert_eq!((fwd.method.as_str(), fwd.path.as_str()), ("POST", "/mcp"));
+    assert_eq!(fwd.body, body, "the body is forwarded untouched");
+
+    // The token names the service it was minted for, not identity.
+    let who = gw
+        .verifier("vault")
+        .verify(
+            fwd.header("authorization")
+                .unwrap()
+                .strip_prefix("Bearer ")
+                .unwrap(),
+        )
+        .unwrap();
+    match who.caller {
+        Caller::Principal(p) => {
+            assert_eq!(p.tenant.as_uuid(), Uuid::from_u128(11));
+            assert_eq!(p.user.as_uuid(), Uuid::from_u128(22));
+            assert_eq!(p.key.as_uuid(), Uuid::from_u128(33));
+        }
+        other => panic!("expected a principal, got {other:?}"),
+    }
+
+    assert_eq!(fwd.header("mcp-protocol-version"), Some("2026-07-28"));
+    assert_eq!(fwd.header("mcp-method"), Some("tools/call"));
+    assert_eq!(fwd.header("mcp-name"), Some("list_secrets"));
+    assert_eq!(fwd.header("origin"), Some("https://app.timelex.example"));
+    assert_eq!(fwd.header("content-type"), Some("application/json"));
+
+    // An allowlist, as for the REST routes: nothing else the client sent travels on. (`accept` is
+    // `*/*`, added by the HTTP client, not the caller.)
+    let allowed = [
+        "host",
+        "authorization",
+        "content-type",
+        "content-length",
+        "accept",
+        "mcp-protocol-version",
+        "mcp-method",
+        "mcp-name",
+        "origin",
+    ];
+    for (name, value) in &fwd.headers {
+        assert!(
+            allowed.contains(&name.as_str()),
+            "unexpected header reached the service: {name}"
+        );
+        assert!(
+            !value.contains(TENANT_KEY.as_str()),
+            "the API key reached the service in {name}"
+        );
+    }
+    assert!(fwd.header("cookie").is_none());
+    assert!(fwd.header("x-timelex-tenant").is_none());
+
+    // The call is metered like any other handled request.
+    let usage = call(&gw.internal, Method::GET, "/internal/usage", &[], None).await;
+    let usage: Value = serde_json::from_str(&usage.text).unwrap();
+    assert_eq!(usage["totals"]["requests"], 1);
+}
+
+#[tokio::test]
+async fn an_identity_owned_tool_goes_to_identity_and_not_elsewhere() {
+    let identity = stub(happy).await;
+    let gw = gateway(format!("http://{}", identity.addr), Duration::from_secs(2));
+    let body = tools_call_body("list_users");
+    let r = mcp_call(
+        &gw.app,
+        TENANT_KEY.as_str(),
+        &mcp_headers("tools/call", Some("list_users")),
+        &body,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "identity's answer is relayed");
+    let calls = identity.calls();
+    assert_eq!(calls.len(), 2, "authenticate, then the tool call");
+    assert_eq!(calls[1].path, "/mcp");
+    assert_eq!(calls[1].body, body);
+}
+
+#[tokio::test]
+async fn an_unknown_tool_is_a_404_and_nothing_is_forwarded() {
+    let identity = stub(happy).await;
+    let vault = stub(|_| (StatusCode::OK, "{}".into(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let r = mcp_call(
+        &gw.app,
+        TENANT_KEY.as_str(),
+        &mcp_headers("tools/call", Some("delete_everything")),
+        &tools_call_body("delete_everything"),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    assert!(r.text.contains("urn:timelex:problem:not-found"));
+    assert_eq!(identity.calls().len(), 1, "only authenticate was called");
+    assert!(vault.calls().is_empty());
+}
+
+#[tokio::test]
+async fn valid_methods_this_version_does_not_route_are_501() {
+    let identity = stub(happy).await;
+    let vault = stub(|_| (StatusCode::OK, "{}".into(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    for method in ["tools/list", "server/discover", "tasks/get", "prompts/get"] {
+        let body = json!({"jsonrpc": "2.0", "id": 1, "method": method}).to_string();
+        let r = mcp_call(&gw.app, TENANT_KEY.as_str(), &mcp_headers(method, None), &body).await;
+        assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED, "{method}");
+        assert!(
+            r.text.contains("urn:timelex:problem:not-implemented"),
+            "{method}: {}",
+            r.text
+        );
+    }
+    assert!(vault.calls().is_empty(), "nothing unroutable was forwarded");
+}
+
+#[tokio::test]
+async fn a_tool_whose_service_has_no_url_is_501() {
+    let identity = stub(happy).await;
+    // Only identity is configured; the table still names vault for this tool.
+    let gw = gateway(format!("http://{}", identity.addr), Duration::from_secs(2));
+    let r = mcp_call(
+        &gw.app,
+        TENANT_KEY.as_str(),
+        &mcp_headers("tools/call", Some("list_secrets")),
+        &tools_call_body("list_secrets"),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::NOT_IMPLEMENTED);
+    assert!(r.text.contains("urn:timelex:problem:not-implemented"));
+    assert_eq!(identity.calls().len(), 1, "nothing can be forwarded");
+}
+
+#[tokio::test]
+async fn malformed_mcp_headers_are_400_after_authentication_and_401_before_it() {
+    let identity = stub(happy).await;
+    let vault = stub(|_| (StatusCode::OK, "{}".into(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let body = tools_call_body("list_secrets");
+    let name = Some("list_secrets");
+    let bad = [
+        (
+            "missing version",
+            vec![("mcp-method", "tools/call"), ("mcp-name", "list_secrets")],
+            "MCP-Protocol-Version",
+        ),
+        (
+            "wrong version",
+            vec![
+                ("mcp-protocol-version", "2025-11-25"),
+                ("mcp-method", "tools/call"),
+                ("mcp-name", "list_secrets"),
+            ],
+            "MCP-Protocol-Version",
+        ),
+        (
+            "missing method",
+            vec![
+                ("mcp-protocol-version", "2026-07-28"),
+                ("mcp-name", "list_secrets"),
+            ],
+            "Mcp-Method",
+        ),
+        (
+            "call without a name",
+            vec![
+                ("mcp-protocol-version", "2026-07-28"),
+                ("mcp-method", "tools/call"),
+            ],
+            "Mcp-Name",
+        ),
+        (
+            "name with a space",
+            vec![
+                ("mcp-protocol-version", "2026-07-28"),
+                ("mcp-method", "tools/call"),
+                ("mcp-name", "list secrets"),
+            ],
+            "Mcp-Name",
+        ),
+    ];
+    for (label, headers, detail) in bad {
+        let r = mcp_call(&gw.app, TENANT_KEY.as_str(), &headers, &body).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{label}");
+        assert!(r.text.contains(detail), "{label}: {}", r.text);
+    }
+    // A repeated header is ambiguous, so it is refused however plausible each value looks.
+    let mut duplicated = mcp_headers("tools/call", name);
+    duplicated.push(("mcp-name", "list_secrets"));
+    let r = mcp_call(&gw.app, TENANT_KEY.as_str(), &duplicated, &body).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    // Authentication comes first: an unauthenticated caller learns only that it is unauthenticated.
+    let before = identity.calls().len();
+    let r = call(
+        &gw.app,
+        Method::POST,
+        "/mcp",
+        &mcp_headers("tools/call", Some("list_secrets")),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(identity.calls().len(), before, "no key, no authenticate call");
+    assert!(vault.calls().is_empty(), "nothing malformed was forwarded");
+}
+
+#[tokio::test]
+async fn an_operator_key_is_not_an_mcp_credential() {
+    // Identity refuses the operator key, exactly as it refuses any key it issued to nobody.
+    let identity = stub(|s: &Seen| {
+        if s.body.contains(OPERATOR_KEY.as_str()) {
+            (StatusCode::UNAUTHORIZED, "{}".into(), Duration::ZERO)
+        } else {
+            (StatusCode::OK, principal_reply(), Duration::ZERO)
+        }
+    })
+    .await;
+    let vault = stub(|_| (StatusCode::OK, "{}".into(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let r = mcp_call(
+        &gw.app,
+        OPERATOR_KEY.as_str(),
+        &mcp_headers("tools/call", Some("list_secrets")),
+        &tools_call_body("list_secrets"),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        identity.calls().len(),
+        1,
+        "it was offered to identity as an API key and refused"
+    );
+    assert!(vault.calls().is_empty());
+}
+
+#[tokio::test]
+async fn the_firm_budget_also_covers_mcp_calls() {
+    let identity = stub(happy).await;
+    let vault = stub(|_| (StatusCode::OK, "{}".into(), Duration::ZERO)).await;
+    let gw = gateway_services(
+        &[
+            ("identity", format!("http://{}", identity.addr)),
+            ("vault", format!("http://{}", vault.addr)),
+        ],
+        Duration::from_secs(2),
+        60,
+        1,
+    );
+    let headers = mcp_headers("tools/call", Some("list_secrets"));
+    let body = tools_call_body("list_secrets");
+    assert_eq!(
+        mcp_call(&gw.app, TENANT_KEY.as_str(), &headers, &body)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let r = mcp_call(&gw.app, TENANT_KEY.as_str(), &headers, &body).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(r.headers[header::RETRY_AFTER], "1");
+    assert_eq!(vault.calls().len(), 1, "the refused call was not forwarded");
 }

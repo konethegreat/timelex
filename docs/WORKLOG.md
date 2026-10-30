@@ -4,6 +4,26 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-30 (later still): P1-04 part b — MCP header routing
+**Trigger:** PR B merged (#17); finishing part b with `POST /mcp`.
+
+**Done (PR C)**
+- `services/gateway/src/mcp.rs`: compiles `contracts/mcp/routes.json` into the build (`include_str!`), refusing duplicates, empty names and an empty table at start-up. `classify` decides from the three headers alone: version must be `2026-07-28`, `Mcp-Method` is validated, and only `tools/call` needs `Mcp-Name`. A valid method it does not route is `Unrouted`, not malformed.
+- `services/gateway/src/proxy.rs`: `POST /mcp` authenticates the tenant key, spends the firm's budget, classifies the headers, looks the tool up, mints a token addressed to the *owning* service and forwards the body untouched with an allowlist of headers (`Content-Type`, the three MCP headers, `Origin`). Unknown tool 404; unrouted method or unconfigured service 501; malformed headers 400 after authentication.
+- `Trip` now carries route, service and tool; the meter record gains optional `service` and `tool`.
+- 8 new routing tests with a second stub service: routing and audience, the header allowlist, an identity-owned tool, unknown tool, 501s, malformed headers (and 401 before any 400), operator keys refused, and the firm budget covering MCP.
+- README, TASKS and the worklog updated. Contract unchanged (already 0.3.0 from PR A).
+
+**Decisions and why**
+- Routing happens after authentication and the budget check, like the REST routes, so an unauthenticated caller cannot probe the table and a firm at its limit cannot make the gateway read a body.
+- `Origin` travels on because the service must enforce it (MCP 2026-07-28); nothing else the client sent does.
+- The token's audience is the owning service, not identity, so a tool call cannot be replayed against identity.
+- The table is compiled in, so a deployment carries no file that can drift from the code.
+
+**Verified:** `cargo fmt --all`, `cargo clippy -p timelex-gateway --all-targets -- -D warnings`, `TIMELEX_SKIP_DB_TESTS=1 cargo test -p timelex-gateway` (25 unit + 2 contract + 24 routing + 6 end-to-end passing; the end-to-end tests pass early locally and run against Postgres in CI).
+
+**Next:** P1-05 (vault v0), P1-06 (outbox) or P1-15 (`timelex-mcp` adapter and MCP aggregation).
+
 ## 2026-10-30 (later): P1-04 part b — rate limits and metering
 **Trigger:** Continuing part b after the contracts PR merged (#16).
 

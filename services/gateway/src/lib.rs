@@ -2,12 +2,13 @@
 //! TimeLex gateway: walking skeleton.
 //!
 //! `GET /health` and `GET /v1/meta` are open. The gateway authenticates callers through the identity
-//! service, routes three identity operations, enforces a per-firm request budget and meters every
-//! handled request ([`proxy`]). Still to come: header-based MCP routing and outward MCP aggregation.
-//! See `docs/ARCHITECTURE.md` and ADR-0001/0003/0012/0013.
+//! service, routes three identity operations and MCP `tools/call` by header ([`mcp`]), enforces a
+//! per-firm request budget and meters every handled request ([`proxy`]). Still to come: the outward
+//! MCP aggregate. See `docs/ARCHITECTURE.md` and ADR-0001/0003/0012/0013.
 
 pub mod config;
 mod limits;
+mod mcp;
 mod meter;
 mod proxy;
 
