@@ -12,6 +12,8 @@ Rules for every tool:
 5. **Approvals** use Multi Round-Trip Requests (`InputRequiredResult`), so a human or policy can answer mid-call.
 6. Tools that move money or send to clients are **not exposed to agents** unless a tenant policy explicitly allows it, and trust-money tools are never exposed ([AUTONOMY.md](../../docs/AUTONOMY.md)).
 
+**Gateway routing (ADR-0013).** The gateway forwards `POST /mcp` without parsing the body. `tools/call` is routed to the owning service by `Mcp-Name` using [routes.json](routes.json); every other method answers 501 until P1-15. A service must re-check `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` against the JSON-RPC body and enforce `Origin`, as MCP 2026-07-28 requires. The gateway and the catalogue must change together: a gateway contract test fails if `routes.json` and this table drift.
+
 | Service | Tool | R/W | Purpose |
 |---|---|---|---|
 | identity | `list_users` | R | List users and roles |

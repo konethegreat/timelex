@@ -1,15 +1,17 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (draft 0.2.0). Contract-first: this file leads the code (ADR-0001).
-# Internal design: ADR-0012 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml.
+# Gateway contract v1 (draft 0.3.0). Contract-first: this file leads the code (ADR-0001).
+# Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.2.0
+  version: 0.3.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
-    Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway also authenticates callers and
-    routes three identity operations (`createTenant`, `issueApiKey`, `revokeApiKey`). Everything else
-    arrives with its service. Every capability is also exposed as MCP tools; see `contracts/mcp/tools.md`.
+    Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway authenticates callers and
+    routes three identity operations (`createTenant`, `issueApiKey`, `revokeApiKey`). Since 0.3.0 it
+    also enforces per-firm request limits, records usage metadata and routes MCP `tools/call` requests
+    by header. Everything else arrives with its service. Every capability is also exposed as MCP
+    tools; see `contracts/mcp/tools.md`.
 
     **Authentication.** Tenant calls carry `Authorization: Bearer tlx_...` (an API key from
     `issueApiKey` or `createTenant`). The gateway checks the key with the identity service on **every**
@@ -26,8 +28,15 @@ info:
 
     **Limits.** Request bodies larger than 64 KiB get 413. An upstream that does not answer within
     5 seconds gets 504; one that cannot be reached gets 502. The gateway forwards nothing unless
-    authentication completed. Per-tenant rate limits (429) and usage metering arrive in a later
-    version (P1-04 part b).
+    authentication completed. Each firm gets 600 requests a minute with a burst of 120 by default;
+    both are configurable. The platform operator gets 60 a minute. A caller over its budget gets 429
+    with `Retry-After` (ADR-0013). Usage metering records request metadata only, never the body or the
+    credential.
+
+    **MCP.** `POST /mcp` routes a request by its `MCP-Protocol-Version` and `Mcp-Method` headers and,
+    for `tools/call`, by the tool name in `Mcp-Name`, without parsing the body. Only `tools/call` is
+    routed in 0.3.0; other methods answer 501 until P1-15. The service re-checks the headers against
+    the body and enforces `Origin`.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -99,6 +108,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
   /v1/api-keys:
@@ -122,6 +132,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
   /v1/api-keys/{keyId}/revoke:
@@ -139,6 +150,67 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /mcp:
+    post:
+      operationId: mcpPost
+      summary: MCP Streamable HTTP endpoint (stateless, 2026-07-28)
+      description: |
+        Routes one MCP request without parsing the JSON body. `Mcp-Method` must be `tools/call`; the
+        tool named in `Mcp-Name` is looked up in `contracts/mcp/routes.json`, and the request is
+        forwarded unchanged to the service that owns it with an internal token addressed to that
+        service. The service re-checks `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` against the
+        body and enforces `Origin` (MCP 2026-07-28).
+
+        Other methods (`server/discover`, `tools/list`, `tasks/*`) are not routed yet and answer 501,
+        pending P1-15. Streaming responses (SSE) are not supported yet: the gateway buffers the
+        service's answer. Tenant API keys only; operator credentials are refused.
+      parameters:
+        - name: MCP-Protocol-Version
+          in: header
+          required: true
+          description: Must be `2026-07-28`; older versions are refused.
+          schema: { type: string, const: "2026-07-28" }
+        - name: Mcp-Method
+          in: header
+          required: true
+          description: Mirrors the JSON-RPC method. Only `tools/call` is routed in this version.
+          schema: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_./:-]+$' }
+        - name: Mcp-Name
+          in: header
+          required: false
+          description: The tool name for `tools/call` (required there), or the task id for `tasks/*`.
+          schema: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$' }
+        - name: Origin
+          in: header
+          required: false
+          description: Forwarded unchanged; the service validates it and answers 403 when it is not allowed.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The MCP JSON-RPC request, forwarded unchanged. The gateway does not validate it.
+      responses:
+        "200":
+          description: The service's MCP answer, relayed unchanged. JSON in 0.3.0; SSE is not yet supported.
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: The tool named in `Mcp-Name` is not in the routing table.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
 components:
@@ -171,6 +243,20 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     TooLarge:
       description: The request body exceeds 64 KiB.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    RateLimited:
+      description: The caller exceeded its request budget (a firm, or the platform operator). `Retry-After` says how many seconds to wait.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying (integer, at least 1).
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotImplemented:
+      description: This MCP method is valid but not routed yet, or the tool's service has no configured URL.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
