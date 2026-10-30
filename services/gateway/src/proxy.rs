@@ -1,17 +1,21 @@
 // Written by Kone Tshivhinda & Claude
-//! Authentication and routing: `contracts/openapi/gateway.v1.yaml`, ADR-0012.
+//! Authentication and routing: `contracts/openapi/gateway.v1.yaml`, ADR-0012 and ADR-0013.
 //!
 //! The gateway never forwards what a client sent. It checks the caller, then builds a *new* request
 //! to the service carrying only an internal token and the body. So no header a client chose (an
 //! `X-TimeLex-Tenant`, a cookie, the API key itself) can reach a service.
+//!
+//! Every handled request is metered once, whatever the outcome, and a firm over its budget is refused
+//! with 429 before its body is read.
 
 use std::sync::Arc;
+use std::time::Instant;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::{Path, Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
@@ -19,7 +23,9 @@ use timelex_auth::{Caller, Principal};
 use timelex_identity::{ApiKeyId, Permission, TenantId, UserId};
 use uuid::Uuid;
 
-use crate::config::{sha256, Config};
+use crate::config::{sha256, Config, OPERATOR_RATE_LIMIT_BURST, OPERATOR_RATE_LIMIT_PER_MINUTE};
+use crate::limits::{Decision, RateKey, RateLimiter};
+use crate::meter::{now_rfc3339, CallerKind, Meter, UsageRecord, UsageSnapshot};
 
 /// Largest request body the gateway will read and forward.
 pub const MAX_BODY_BYTES: usize = 64 * 1024;
@@ -27,9 +33,11 @@ pub const MAX_BODY_BYTES: usize = 64 * 1024;
 struct Inner {
     config: Config,
     http: reqwest::Client,
+    limiter: RateLimiter,
+    meter: Meter,
 }
 
-/// Shared gateway state: configuration and one pooled HTTP client.
+/// Shared gateway state: configuration, one pooled HTTP client, the buckets and the meter.
 #[derive(Clone)]
 pub struct GatewayState(Arc<Inner>);
 
@@ -44,7 +52,23 @@ impl GatewayState {
             .no_proxy()
             .build()
             .map_err(|e| format!("cannot build the HTTP client: {e}"))?;
-        Ok(Self(Arc::new(Inner { config, http })))
+        let limiter = RateLimiter::new(
+            config.rate_limit_per_minute,
+            config.rate_limit_burst,
+            OPERATOR_RATE_LIMIT_PER_MINUTE,
+            OPERATOR_RATE_LIMIT_BURST,
+        );
+        Ok(Self(Arc::new(Inner {
+            config,
+            http,
+            limiter,
+            meter: Meter::stdout(),
+        })))
+    }
+
+    /// The running usage totals, for the internal listener.
+    pub fn usage(&self) -> UsageSnapshot {
+        self.0.meter.snapshot()
     }
 }
 
@@ -57,6 +81,19 @@ pub fn routes(state: GatewayState) -> Router {
         .with_state(state)
 }
 
+/// The internal listener's only endpoint. It must be bound to loopback: these totals are for operators,
+/// not tenants.
+pub fn internal_routes(state: GatewayState) -> Router {
+    Router::new()
+        .route("/internal/usage", get(usage))
+        .fallback(|| async { problem(StatusCode::NOT_FOUND, "not-found", "Not found", None) })
+        .with_state(state)
+}
+
+async fn usage(State(state): State<GatewayState>) -> Json<UsageSnapshot> {
+    Json(state.usage())
+}
+
 // ---------- problem details ----------
 
 /// Why the gateway answered itself instead of relaying a service's answer.
@@ -64,6 +101,7 @@ enum Reject {
     Unauthorized,
     Invalid(&'static str),
     TooLarge,
+    RateLimited(u64),
     BadGateway,
     GatewayTimeout,
     Internal,
@@ -105,6 +143,17 @@ impl IntoResponse for Reject {
                 "Request too large",
                 None,
             ),
+            Reject::RateLimited(seconds) => {
+                let mut r = problem(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "rate-limited",
+                    "Too many requests",
+                    Some("the request budget is exhausted; retry after the given number of seconds"),
+                );
+                r.headers_mut()
+                    .insert(header::RETRY_AFTER, HeaderValue::from(seconds.max(1)));
+                r
+            }
             Reject::BadGateway => problem(StatusCode::BAD_GATEWAY, "bad-gateway", "Bad gateway", None),
             Reject::GatewayTimeout => problem(
                 StatusCode::GATEWAY_TIMEOUT,
@@ -169,6 +218,7 @@ impl GatewayState {
     /// Ask identity who this API key is. A 401 from identity means "not a usable key"; anything
     /// odd (5xx, an unreadable answer, a refusal of our own service token) is the gateway's problem.
     async fn authenticate(&self, api_key: &str) -> Result<Principal, Reject> {
+        let base = self.0.config.service_url("identity").ok_or(Reject::Internal)?;
         let token = self
             .0
             .config
@@ -178,7 +228,7 @@ impl GatewayState {
         let response = self
             .0
             .http
-            .post(format!("{}/v1/authenticate", self.0.config.identity_url))
+            .post(format!("{base}/v1/authenticate"))
             .bearer_auth(token)
             .header(header::CONTENT_TYPE, "application/json")
             .body(json!({ "token": api_key }).to_string())
@@ -215,7 +265,7 @@ impl GatewayState {
     }
 
     /// Identify the caller and mint the internal token to forward with.
-    async fn internal_token(&self, who: Who, headers: &HeaderMap) -> Result<String, Reject> {
+    async fn internal_token(&self, who: Who, headers: &HeaderMap) -> Result<(Caller, String), Reject> {
         let presented = bearer(headers).ok_or(Reject::Unauthorized)?;
         let caller = match who {
             Who::Operator => {
@@ -226,25 +276,24 @@ impl GatewayState {
             }
             Who::Tenant => Caller::Principal(self.authenticate(presented).await?),
         };
-        self.0
+        let token = self
+            .0
             .config
             .signer
             .sign("identity", &caller)
-            .map_err(|_| Reject::Internal)
+            .map_err(|_| Reject::Internal)?;
+        Ok((caller, token))
     }
 
-    /// Send a fresh request to identity and relay the answer.
+    /// Send a fresh request to identity and relay the answer, with the size of the answer.
     async fn forward(
         &self,
         path: &str,
         token: String,
-        body: Option<axum::body::Bytes>,
-    ) -> Result<Response, Reject> {
-        let mut request = self
-            .0
-            .http
-            .post(format!("{}{path}", self.0.config.identity_url))
-            .bearer_auth(token);
+        body: Option<Bytes>,
+    ) -> Result<(Response, u64), Reject> {
+        let base = self.0.config.service_url("identity").ok_or(Reject::Internal)?;
+        let mut request = self.0.http.post(format!("{base}{path}")).bearer_auth(token);
         if let Some(b) = body.filter(|b| !b.is_empty()) {
             request = request.header(header::CONTENT_TYPE, "application/json").body(b);
         }
@@ -258,6 +307,7 @@ impl GatewayState {
         let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
         let cache_control = upstream.headers().get(header::CACHE_CONTROL).cloned();
         let bytes = upstream.bytes().await.map_err(|e| upstream_failure(&e))?;
+        let len = bytes.len() as u64;
         let mut response = Response::new(Body::from(bytes));
         *response.status_mut() = status;
         if let Some(v) = content_type {
@@ -266,7 +316,7 @@ impl GatewayState {
         if let Some(v) = cache_control {
             response.headers_mut().insert(header::CACHE_CONTROL, v);
         }
-        Ok(response)
+        Ok((response, len))
     }
 }
 
@@ -276,46 +326,167 @@ enum Who {
     Tenant,
 }
 
-/// Authenticate, then read the (size-limited) body, then forward. Authentication comes first so an
-/// unauthenticated caller learns nothing about body limits or routes.
-async fn handle(state: GatewayState, who: Who, path: String, req: Request) -> Result<Response, Reject> {
-    let token = state.internal_token(who, req.headers()).await?;
-    let body = to_bytes(req.into_body(), MAX_BODY_BYTES)
-        .await
-        .map_err(|_| Reject::TooLarge)?;
-    state.forward(&path, token, Some(body)).await
+/// Which route a request took, for the meter.
+#[derive(Clone, Copy)]
+struct Route {
+    label: &'static str,
+    service: &'static str,
 }
 
-fn done(r: Result<Response, Reject>) -> Response {
-    r.unwrap_or_else(IntoResponse::into_response)
+/// The clock and labels for one request, so every exit path records exactly one line.
+struct Trip {
+    route: Route,
+    method: Method,
+    started: Instant,
+}
+
+impl Trip {
+    fn new(route: Route, method: Method) -> Self {
+        Self {
+            route,
+            method,
+            started: Instant::now(),
+        }
+    }
+
+    /// Record the request as it ended. `caller` is `None` when authentication failed.
+    fn done(
+        &self,
+        state: &GatewayState,
+        caller: Option<&Caller>,
+        status: StatusCode,
+        bytes_in: u64,
+        bytes_out: u64,
+        rate_limited: bool,
+    ) {
+        let (kind, tenant, user, key) = match caller {
+            Some(Caller::Principal(p)) => (
+                CallerKind::Principal,
+                Some(p.tenant.as_uuid()),
+                Some(p.user.as_uuid()),
+                Some(p.key.as_uuid()),
+            ),
+            Some(Caller::Operator) => (CallerKind::Operator, None, None, None),
+            Some(Caller::Service) => (CallerKind::Service, None, None, None),
+            None => (CallerKind::Unidentified, None, None, None),
+        };
+        state.0.meter.record(&UsageRecord {
+            at: now_rfc3339(),
+            caller: kind,
+            tenant_id: tenant,
+            user_id: user,
+            key_id: key,
+            route: self.route.label,
+            service: self.route.service,
+            method: self.method.to_string(),
+            status: status.as_u16(),
+            duration_ms: self.started.elapsed().as_millis() as u64,
+            bytes_in,
+            bytes_out,
+            rate_limited,
+        });
+    }
+}
+
+/// Authenticate, check the budget, then read the (size-limited) body and forward. Authentication comes
+/// first so an unauthenticated caller learns nothing about limits or routes; the budget comes before
+/// the body so a firm at its limit does not make the gateway read anything.
+///
+/// `path` is `None` when the route's parameter is malformed: the caller is authenticated first (so the
+/// answer never depends on who is asking) and then gets a 400.
+async fn handle(state: GatewayState, who: Who, route: Route, path: Option<String>, req: Request) -> Response {
+    let trip = Trip::new(route, req.method().clone());
+    let (caller, token) = match state.internal_token(who, req.headers()).await {
+        Ok(identified) => identified,
+        Err(reject) => {
+            let response = reject.into_response();
+            trip.done(&state, None, response.status(), 0, 0, false);
+            return response;
+        }
+    };
+    let key = match &caller {
+        Caller::Principal(p) => RateKey::Tenant(p.tenant.as_uuid()),
+        // Public routes mint only operator and principal tokens. A service token would share the
+        // operator's budget rather than escape limiting.
+        Caller::Operator | Caller::Service => RateKey::Operator,
+    };
+    if let Decision {
+        allowed: false,
+        retry_after_seconds,
+    } = state.0.limiter.check(key, Instant::now())
+    {
+        let response = Reject::RateLimited(retry_after_seconds).into_response();
+        trip.done(&state, Some(&caller), response.status(), 0, 0, true);
+        return response;
+    }
+    let Some(path) = path else {
+        let response = Reject::Invalid("keyId is not a UUID").into_response();
+        trip.done(&state, Some(&caller), response.status(), 0, 0, false);
+        return response;
+    };
+    let body = match to_bytes(req.into_body(), MAX_BODY_BYTES).await {
+        Ok(body) => body,
+        Err(_) => {
+            let response = Reject::TooLarge.into_response();
+            // The read stopped at the limit, so the size is unknown but at least one byte more.
+            trip.done(
+                &state,
+                Some(&caller),
+                response.status(),
+                MAX_BODY_BYTES as u64 + 1,
+                0,
+                false,
+            );
+            return response;
+        }
+    };
+    let bytes_in = body.len() as u64;
+    match state.forward(&path, token, Some(body)).await {
+        Ok((response, bytes_out)) => {
+            trip.done(
+                &state,
+                Some(&caller),
+                response.status(),
+                bytes_in,
+                bytes_out,
+                false,
+            );
+            response
+        }
+        Err(reject) => {
+            let response = reject.into_response();
+            trip.done(&state, Some(&caller), response.status(), bytes_in, 0, false);
+            response
+        }
+    }
 }
 
 async fn create_tenant(State(s): State<GatewayState>, req: Request) -> Response {
-    done(handle(s, Who::Operator, "/v1/tenants".into(), req).await)
+    let route = Route {
+        label: "tenants.create",
+        service: "identity",
+    };
+    handle(s, Who::Operator, route, Some("/v1/tenants".into()), req).await
 }
 
 async fn issue_api_key(State(s): State<GatewayState>, req: Request) -> Response {
-    done(handle(s, Who::Tenant, "/v1/api-keys".into(), req).await)
+    let route = Route {
+        label: "apiKeys.issue",
+        service: "identity",
+    };
+    handle(s, Who::Tenant, route, Some("/v1/api-keys".into()), req).await
 }
 
 async fn revoke_api_key(State(s): State<GatewayState>, Path(key_id): Path<String>, req: Request) -> Response {
     // Re-format the id ourselves: only a canonical UUID ever reaches the service's URL.
-    let Ok(key) = Uuid::parse_str(&key_id) else {
-        // Authenticate first even for a bad id, so the answer never depends on who is asking.
-        return done(match s.internal_token(Who::Tenant, req.headers()).await {
-            Ok(_) => Err(Reject::Invalid("keyId is not a UUID")),
-            Err(e) => Err(e),
-        });
+    let path = Uuid::parse_str(&key_id)
+        .ok()
+        .map(|key| format!("/v1/api-keys/{}/revoke", key.hyphenated()));
+    let route = Route {
+        label: "apiKeys.revoke",
+        service: "identity",
     };
-    done(
-        handle(
-            s,
-            Who::Tenant,
-            format!("/v1/api-keys/{}/revoke", key.hyphenated()),
-            req,
-        )
-        .await,
-    )
+    handle(s, Who::Tenant, route, path, req).await
 }
 
 #[cfg(test)]

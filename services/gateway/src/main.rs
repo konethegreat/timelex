@@ -21,22 +21,45 @@ fn keygen() -> Result<(), String> {
     Ok(())
 }
 
+async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, String> {
+    tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| format!("cannot listen on {addr}: {e}"))
+}
+
 async fn serve() -> Result<(), String> {
-    let addr: SocketAddr = std::env::var("TIMELEX_GATEWAY_ADDR")
+    let config = Config::from_env()?;
+    let internal_addr = config.internal_addr;
+    if !internal_addr.ip().is_loopback() {
+        eprintln!(
+            "warning: TIMELEX_GATEWAY_INTERNAL_ADDR={internal_addr} is not loopback; /internal/usage \
+             shows per-firm totals and is meant for operators only"
+        );
+    }
+    let public_addr: SocketAddr = std::env::var("TIMELEX_GATEWAY_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:8088".to_string())
         .parse()
         .map_err(|_| "TIMELEX_GATEWAY_ADDR must be host:port".to_string())?;
-    let app = timelex_gateway::app_with(Config::from_env()?)?;
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|e| format!("cannot listen on {addr}: {e}"))?;
-    println!("timelex-gateway (pre-alpha) listening on http://{addr}");
-    axum::serve(listener, app)
+
+    let gateway = timelex_gateway::app_with(config)?;
+    let public = bind(public_addr).await?;
+    let internal = bind(internal_addr).await?;
+
+    println!("timelex-gateway (pre-alpha) listening on http://{public_addr}");
+    println!("internal usage on http://{internal_addr}/internal/usage");
+    let internal_task = tokio::spawn(async move {
+        if let Err(e) = axum::serve(internal, gateway.internal).await {
+            eprintln!("internal listener stopped: {e}");
+        }
+    });
+    let result = axum::serve(public, gateway.public)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    internal_task.abort();
+    result
 }
 
 #[tokio::main]
