@@ -114,7 +114,11 @@ async fn seed_user(
 
 async fn run_as_firm(env: &Env, tenant: TenantId, sql: &str) {
     let mut tx = env.tenants.begin(tenant).await.unwrap();
-    sqlx::query(sql).execute(tx.conn()).await.unwrap();
+    // Test fixtures only: callers pass a literal or a statement built from a typed UUID.
+    sqlx::query(sqlx::AssertSqlSafe(sql))
+        .execute(tx.conn())
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 }
 

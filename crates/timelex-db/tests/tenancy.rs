@@ -17,11 +17,24 @@ const FK_VIOLATION: &str = "23503";
 const CHECK_VIOLATION: &str = "23514";
 const INVALID_TEXT: &str = "22P02";
 
+/// These tests pick a table from a fixed list and Postgres will not bind an identifier, so sqlx
+/// 0.9 asks for an explicit assertion. This guard keeps that assertion honest.
+fn relation(table: &str) -> &str {
+    assert!(
+        ["tenants", "users", "user_roles", "api_keys"].contains(&table),
+        "a tenancy query named a table outside the known set"
+    );
+    table
+}
+
 async fn count(tx: &mut timelex_db::TenantTx, table: &str) -> i64 {
-    sqlx::query_scalar(&format!("SELECT count(*) FROM identity.{table}"))
-        .fetch_one(tx.conn())
-        .await
-        .unwrap()
+    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FROM identity.{}",
+        relation(table)
+    )))
+    .fetch_one(tx.conn())
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -62,10 +75,13 @@ async fn without_a_tenant_nothing_is_visible() {
     let (raw, tenants) = db.service_pool().await;
     seed_tenant(&tenants, "firm-a", 2).await;
     for table in ["tenants", "users", "user_roles", "api_keys"] {
-        let n: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM identity.{table}"))
-            .fetch_one(&raw)
-            .await
-            .unwrap();
+        let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM identity.{}",
+            relation(table)
+        )))
+        .fetch_one(&raw)
+        .await
+        .unwrap();
         assert_eq!(n, 0, "{table} visible with no tenant set");
     }
     db.cleanup().await;
@@ -280,9 +296,10 @@ fn tenants_never_see_each_others_rows() {
                 prop_assert_eq!(count(&mut tx, "api_keys").await, n as i64);
                 // Every visible row carries this firm's id and nobody else's.
                 for table in ["users", "user_roles", "api_keys"] {
-                    let foreign: i64 = sqlx::query_scalar(&format!(
-                        "SELECT count(*) FROM identity.{table} WHERE tenant_id <> $1"
-                    ))
+                    let foreign: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                        "SELECT count(*) FROM identity.{} WHERE tenant_id <> $1",
+                        relation(table)
+                    )))
                     .bind(tenant.as_uuid())
                     .fetch_one(tx.conn())
                     .await
