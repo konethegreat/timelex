@@ -13,7 +13,7 @@ One database, one **schema** and one **login role** per service. Two layers of S
 ## What the bootstrap creates
 - `timelex_migrator`: owns the service schemas; not a superuser; cannot bypass row-level security.
 - `platform` schema: `current_tenant()`, `apply_tenant_rls()`, `provision_service()`, and the view `tables_without_tenant_rls`.
-- For each provisioned service (today: `identity`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema.
+- For each provisioned service (today: `identity`, `vault`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema.
 
 Roles are created `NOLOGIN` and **no file in this repository contains a password**.
 
@@ -22,6 +22,7 @@ Roles are created `NOLOGIN` and **no file in this repository contains a password
 docker compose -f deploy/docker-compose.yml up -d postgres
 # as the superuser from the compose file, run the three bootstrap files in order, then:
 #   ALTER ROLE timelex_migrator LOGIN PASSWORD '...';   ALTER ROLE svc_identity LOGIN PASSWORD '...';
+#   ALTER ROLE svc_vault LOGIN PASSWORD '...';
 # choose your own passwords and keep them in your untracked .env
 ```
 `timelex_db::bootstrap(&admin_pool)` runs the three files for you from Rust.

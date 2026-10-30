@@ -1,0 +1,29 @@
+[package]
+name = "timelex-vault-service"
+description = "TimeLex vault service: write-only custody of tenant secrets. Store and schema; HTTP follows in the same increment."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+timelex-auth = { path = "../../crates/timelex-auth" }
+timelex-db = { path = "../../crates/timelex-db" }
+timelex-identity = { path = "../../crates/timelex-identity" }
+timelex-vault = { path = "../../crates/timelex-vault" }
+getrandom = "0.4"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
+time = "0.3"
+uuid = "1"
+zeroize = "1"
+
+[dev-dependencies]
+timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# Tests build the master key at run time; uuid 4 supplies the randomness.
+uuid = { version = "1", features = ["v4"] }
