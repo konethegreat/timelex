@@ -49,5 +49,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0010](adr/0010-messaging-and-sync-contracts.md) | Messaging and synchronous contracts | Proposed |
 | [0011](adr/0011-tenancy-enforcement-and-database-roles.md) | Tenancy enforcement and database roles | Accepted |
 | [0012](adr/0012-internal-service-authentication.md) | Internal service authentication and gateway routing | Accepted |
+| [0013](adr/0013-gateway-limits-and-metering.md) | Gateway limits, metering and MCP header routing | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

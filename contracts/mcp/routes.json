@@ -1,0 +1,32 @@
+{
+  "version": "0.1.0",
+  "note": "Tool-to-service routing for the gateway. Keep in step with contracts/mcp/tools.md; the gateway's contract test fails when the two drift.",
+  "tools": [
+    { "name": "list_users", "service": "identity", "readOnly": true },
+    { "name": "create_api_key", "service": "identity", "readOnly": false },
+    { "name": "list_secrets", "service": "vault", "readOnly": true },
+    { "name": "test_secret", "service": "vault", "readOnly": true },
+    { "name": "revoke_secret", "service": "vault", "readOnly": false },
+    { "name": "list_workflows", "service": "mcp-host", "readOnly": true },
+    { "name": "run_workflow", "service": "mcp-host", "readOnly": false },
+    { "name": "get_run", "service": "mcp-host", "readOnly": true },
+    { "name": "list_connectors", "service": "capture-hub", "readOnly": true },
+    { "name": "start_backfill", "service": "capture-hub", "readOnly": false },
+    { "name": "quick_capture", "service": "capture-hub", "readOnly": false },
+    { "name": "attribute_block", "service": "attribution", "readOnly": false },
+    { "name": "explain_attribution", "service": "attribution", "readOnly": true },
+    { "name": "list_exceptions", "service": "attribution", "readOnly": true },
+    { "name": "narrate_entry", "service": "narrative", "readOnly": false },
+    { "name": "check_narrative", "service": "narrative", "readOnly": true },
+    { "name": "list_entries", "service": "time-ledger", "readOnly": true },
+    { "name": "propose_entry", "service": "time-ledger", "readOnly": false },
+    { "name": "approve_entry", "service": "time-ledger", "readOnly": false },
+    { "name": "get_review_queue", "service": "time-ledger", "readOnly": true },
+    { "name": "search_matters", "service": "matters", "readOnly": true },
+    { "name": "check_conflicts", "service": "matters", "readOnly": true },
+    { "name": "get_wip", "service": "billing", "readOnly": true },
+    { "name": "prepare_proforma", "service": "billing", "readOnly": false },
+    { "name": "certify_proforma", "service": "billing", "readOnly": false },
+    { "name": "get_trust_balance", "service": "trust", "readOnly": true }
+  ]
+}

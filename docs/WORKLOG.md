@@ -4,6 +4,29 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-30: P1-04 part b starts with contracts
+**Trigger:** Kone asked to pick the system up again and chose gateway part b (rate limits, metering, `Mcp-Method` routing). Context reload confirmed the ClearCut boundary: billing calls ClearCut directly (ADR-0008); ClearCut is not a gateway target.
+
+**Done (PR A, contracts only)**
+- `contracts/openapi/gateway.v1.yaml` 0.3.0: 429 with `Retry-After` on every authenticated operation, a `POST /mcp` operation routed by `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name`, and 501 for methods not routed yet.
+- `contracts/mcp/routes.json`: tool-to-service routing for all 26 tools in the catalogue, with read-only flags.
+- `services/gateway/tests/contracts.rs`: parses `tools.md` and fails if the catalogue and `routes.json` drift (2 tests pass).
+- [ADR-0013](adr/0013-gateway-limits-and-metering.md) accepted: per-firm token buckets after authentication, metadata-only metering to stdout plus a loopback `/internal/usage`, header routing without body parsing, and the config changes.
+- Docs index, contracts README and MCP catalogue updated.
+
+**Decisions and why**
+- Limits are keyed **after** authentication. The tenant id in the key prefix is unverified; a pre-auth bucket could be spoofed to burn another firm's budget.
+- The limiter is in process, so the effective limit multiplies with replicas until a shared store exists. Phase 1 runs one gateway.
+- Metering stays out of Postgres: the gateway owns no data, and P1-06/P1-10 become the durable path. This is request metering, not model spend (P3-12).
+- `tasks/*` cannot be routed by `Mcp-Name` because it carries the task id; P1-15 must prefix task ids with a service or add a lookup.
+
+**Known gaps**
+- Invalid keys still reach identity on every attempt; identity-side or edge per-IP limits are the later fix.
+- SSE/streaming, OAuth, tool schemas and MCP aggregation wait for P1-15.
+- Usage counters reset on restart; `since` and uptime are in the response.
+
+**Next:** PR B (rate limits and metering), then PR C (MCP routing).
+
 ## 2026-10-21: Merged the open PRs
 **Trigger:** Kone asked to merge every open PR and close any that should not be merged.
 - **Merged, in order, with merge commits** (so each stacked PR still applied cleanly after its base landed): #4 identity domain crate, #5 database layer and schema, #6 identity store and contract, #7 P1-04 contracts and ADR-0012, #8 P1-04 part a (internal token, identity HTTP, gateway authentication and routing); then Dependabot #3 (GitHub Actions bumps, pinned by SHA).
