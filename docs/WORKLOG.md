@@ -4,7 +4,26 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-10-30 (latest): P1-05 vault v0 — rules, sealed schema and store
+## 2026-10-30 (latest): P1-05 vault v0 finished — HTTP API and the Anthropic check
+**Trigger:** increment 2 merged as `8ef8214` (#20); the last part is the service the gateway and the admin UI will talk to.
+
+**Done (increment 3)**
+- [`services/vault/src/http.rs`](../services/vault/src/http.rs): all five contract routes plus `/health`. Internal tokens of kind `principal` only; the firm, user and permissions come from the verified token. Problem details (RFC 9457) for every failure, a 64 KiB body limit, and metadata JSON that omits `lastTestedAt`, `lastUsedAt` and `revokedAt` until they exist instead of sending null.
+- [`services/vault/src/validator.rs`](../services/vault/src/validator.rs): a `ProviderValidator` trait, so the HTTP layer is tested with a script and no network. The live validator makes one read-only `GET https://api.anthropic.com/v1/models?limit=1` for `anthropic_api_key` with the key in `x-api-key`, and reads only the status: 2xx accepted, 401/403 rejected, anything else (429, 5xx, timeout, refused connection) unreachable. Other kinds pass on shape, as 0.1.0's contract says.
+- [`services/vault/src/main.rs`](../services/vault/src/main.rs): `serve` and `migrate`; the master key is base64 of exactly 32 bytes, decoded into a zeroising wrapper, and no error message prints it.
+- 5 unit tests (status mapping, header placement against a local stand-in server, timeout/refusal) and 13 HTTP tests against Postgres: create/list/revoke, replace under the same id, rotation, five credential failures mapping to one 401, wrong kind and missing permission mapping to 403, malformed and 70 KiB bodies (400/413), unknown kind and a host outside the kind (400), a passing test stamping only `lastTestedAt`, a rejection as 422, an outage as 502 with no stamp, and another firm's id as 404 for every operation.
+- Every response in those tests is searched for the full value; it never appears. `Debug` for `SecretValue`, `LoadedSecret` and `PutSecretRequest` is redacted, which the tests assert, and the only log line the service writes is a fixed sentence plus a database or rule message that never holds a value.
+
+**Decisions and why**
+- **Axum cannot register `{kind}` and `{id}` on the same segment**, so one route owns `/v1/secrets/{key}`: PUT reads it as a kind, DELETE as a UUID. The wire paths are the ones the contract describes.
+- **An unreachable provider is not recorded as a test.** A 502 means no verdict; writing `lastTestedAt` would suggest the key failed and could push an admin to revoke a working key. A rejection is a verdict and is recorded.
+- **The provider's own words are never relayed**, and a rejection body is fixed text. A provider error can contain the key or account details.
+- **`includeRevoked` is parsed by our own extractor**, so a bad query is a problem-details 400 instead of axum's plain-text rejection.
+- **Test keys are drawn at run time** (uuid 4), after CodeQL flagged fixed key and nonce literals in increment 2 as hard-coded cryptographic values.
+
+**Still to come:** a gateway route for `/v1/secrets` (the next password-like settings also need `settings:manage`); `secret.*` events through the outbox (P1-06); the lease (P1-13); MCP tools through the P1-15 adapter; KMS/WIF (T0-L05).
+
+## 2026-10-30 (later): P1-05 vault v0 — rules, sealed schema and store
 **Trigger:** increment 1 (contract and docs) merged as `9a7c066`; continuing with the part that has to be right before any endpoint exists.
 
 **Done (increment 2)**

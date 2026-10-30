@@ -32,7 +32,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 |---|---|---|---|---|---|
 | [`gateway`](../services/gateway) | Rust | Edge: authN (API keys, OIDC), tenant resolution, rate limits and metering, routing, outward MCP aggregation, OpenAPI aggregation | none (config only) | 1 | ✅ authN, routing to identity, per-firm limits and metering, header-based `tools/call` routing; MCP aggregation and OIDC pending |
 | [`identity`](../services/identity) | Rust | Tenants, users, roles, API keys, SSO settings | `identity` | 1 | ✅ library (create firm, issue/revoke key, authenticate) |
-| [`vault`](../services/vault) | Rust | BYO keys and OAuth tokens: envelope encryption, write-only API, spend caps, audit | `vault` | 1 | 🔄 contract 0.1.0 (`vault.v1.yaml`); sealed schema, domain crate and store done; HTTP next. Stored-key mode, lease and MCP later |
+| [`vault`](../services/vault) | Rust | BYO keys and OAuth tokens: envelope encryption, write-only API, spend caps, audit | `vault` | 1 | ✅ v0 (`vault.v1.yaml`): sealed schema, envelope encryption, write-only REST API, Anthropic key check, per-firm audit chain. Lease, MCP and KMS/WIF later |
 | [`mcp-host`](../services/mcp-host) | Rust | Agent runtime: MCP clients, model loop, workflows, budgets, escalation, audit | `host` | 1–4 | 🟡 |
 | [`capture-hub`](../services/capture-hub) | Rust | Connectors (Microsoft Graph, Google), webhook receipt, subscription renewal, normalisation to activity events | `capture` | 2 | 🟡 |
 | [`desktop-agent`](../services/desktop-agent) | Rust | Windows agent: foreground window/document, idle time, local privacy filter, pause, signed updates | local only | 2 | 🟡 |

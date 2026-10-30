@@ -417,13 +417,14 @@ impl VaultStore {
     }
 
     /// Record that a provider check ran. Updates `lastTestedAt` and appends the audit entry; it does
-    /// **not** touch `lastUsedAt`, because testing a key is not using it.
+    /// **not** touch `lastUsedAt`, because testing a key is not using it. Returns the instant stored,
+    /// which the HTTP layer reports as `checkedAt`.
     pub async fn record_test(
         &self,
         actor: impl Into<Actor>,
         id: SecretId,
         outcome: TestOutcome,
-    ) -> Result<(), StoreError> {
+    ) -> Result<OffsetDateTime, StoreError> {
         let actor: Actor = actor.into();
         settings_only(&actor)?;
         let now = self.now();
@@ -453,7 +454,7 @@ impl VaultStore {
         )
         .await?;
         tx.commit().await?;
-        Ok(())
+        Ok(now)
     }
 
     fn seal(
