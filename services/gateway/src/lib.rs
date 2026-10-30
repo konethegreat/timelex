@@ -1,12 +1,14 @@
 // Written by Kone Tshivhinda & Claude
 //! TimeLex gateway: walking skeleton.
 //!
-//! `GET /health` and `GET /v1/meta` are open. Since P1-04 part a the gateway also authenticates callers
-//! through the identity service and routes three identity operations ([`proxy`]). Still to come (part b): rate
-//! limits, metering, header-based routing and outward MCP aggregation. See
-//! `docs/ARCHITECTURE.md` and ADR-0001/0003.
+//! `GET /health` and `GET /v1/meta` are open. The gateway authenticates callers through the identity
+//! service, routes three identity operations, enforces a per-firm request budget and meters every
+//! handled request ([`proxy`]). Still to come: header-based MCP routing and outward MCP aggregation.
+//! See `docs/ARCHITECTURE.md` and ADR-0001/0003/0012/0013.
 
 pub mod config;
+mod limits;
+mod meter;
 mod proxy;
 
 use axum::{http::StatusCode, response::Response, routing::get, Json, Router};
@@ -62,11 +64,24 @@ async fn not_found() -> Response {
     proxy::problem(StatusCode::NOT_FOUND, "not-found", "Not found", None)
 }
 
+/// The two listeners a running gateway needs: the public routes and the loopback internals.
+///
+/// They are separate so `/internal/usage` can be bound to a loopback address that tenants never reach.
+pub struct Gateway {
+    /// Routes intended for the network: open health and meta, plus authenticated service routes.
+    pub public: Router,
+    /// Operator-only endpoints; bind to loopback.
+    pub internal: Router,
+}
+
 /// Build the full gateway: the open routes plus authenticated routing to the identity service.
 /// Anything else, including the internal `authenticate` operation, is a 404.
-pub fn app_with(config: config::Config) -> Result<Router, String> {
+pub fn app_with(config: config::Config) -> Result<Gateway, String> {
     let state = proxy::GatewayState::new(config)?;
-    Ok(app().merge(proxy::routes(state)))
+    Ok(Gateway {
+        public: app().merge(proxy::routes(state.clone())),
+        internal: proxy::internal_routes(state),
+    })
 }
 
 #[cfg(test)]

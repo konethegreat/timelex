@@ -2,6 +2,7 @@
 //! The gateway's authentication and routing against a *stub* identity service that records what it
 //! receives. No database: these tests are about what the gateway forwards, refuses and hides.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -119,19 +120,30 @@ fn happy(s: &Seen) -> (StatusCode, String, Duration) {
 
 struct Gw {
     app: Router,
+    internal: Router,
     verifier: Verifier,
 }
 
+/// The default budgets, unless a test asks for a smaller one.
 fn gateway(identity_url: String, timeout: Duration) -> Gw {
+    gateway_with(identity_url, timeout, 600, 120)
+}
+
+fn gateway_with(identity_url: String, timeout: Duration, per_minute: u32, burst: u32) -> Gw {
     let kp = generate_keypair().unwrap();
     let config = Config {
         signer: timelex_auth::Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap(),
         operator_key_hashes: vec![sha256(OPERATOR_KEY.as_str())],
-        identity_url,
+        service_urls: HashMap::from([("identity".to_owned(), identity_url)]),
         upstream_timeout: timeout,
+        rate_limit_per_minute: per_minute,
+        rate_limit_burst: burst,
+        internal_addr: "127.0.0.1:8089".parse().unwrap(),
     };
+    let gateway = timelex_gateway::app_with(config).unwrap();
     Gw {
-        app: timelex_gateway::app_with(config).unwrap(),
+        app: gateway.public,
+        internal: gateway.internal,
         verifier: Verifier::from_config("identity", &format!("k1={}", kp.public_base64)).unwrap(),
     }
 }
@@ -434,10 +446,13 @@ async fn operator_key_rotation_accepts_both_keys() {
     let config = Config {
         signer: timelex_auth::Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap(),
         operator_key_hashes: vec![sha256("old-key"), sha256("new-key")],
-        identity_url: format!("http://{}", s.addr),
+        service_urls: HashMap::from([("identity".to_owned(), format!("http://{}", s.addr))]),
         upstream_timeout: Duration::from_secs(2),
+        rate_limit_per_minute: 600,
+        rate_limit_burst: 120,
+        internal_addr: "127.0.0.1:8089".parse().unwrap(),
     };
-    let app = timelex_gateway::app_with(config).unwrap();
+    let app = timelex_gateway::app_with(config).unwrap().public;
     for key in ["old-key", "new-key"] {
         assert_eq!(
             post_as(&app, "/v1/tenants", key, Some("{}")).await.status,
@@ -616,5 +631,128 @@ async fn bodies_over_64_kib_are_refused_after_authentication_and_never_forwarded
             .await
             .status,
         StatusCode::CREATED
+    );
+}
+
+// ---------- request budget ----------
+
+#[tokio::test]
+async fn a_firm_over_its_budget_gets_429_and_nothing_is_forwarded() {
+    let s = stub(happy).await;
+    let gw = gateway_with(format!("http://{}", s.addr), Duration::from_secs(2), 60, 2);
+    let body = json!({"name": "k", "scopes": ["time:read"]}).to_string();
+    for _ in 0..2 {
+        assert_eq!(
+            post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some(&body))
+                .await
+                .status,
+            StatusCode::CREATED
+        );
+    }
+    assert_eq!(s.calls().len(), 4, "two authenticate calls and two forwards");
+
+    let r = post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some(&body)).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        r.headers[header::RETRY_AFTER],
+        "1",
+        "60 a minute refills one a second"
+    );
+    assert!(r.text.contains("urn:timelex:problem:rate-limited"));
+    // The bucket is keyed on who identity confirmed, so authentication still happens; the request
+    // itself is never forwarded.
+    assert_eq!(s.calls().len(), 5, "one authenticate call, no forward");
+    assert_eq!(s.calls().last().unwrap().path, "/v1/authenticate");
+    assert_eq!(
+        s.calls().iter().filter(|c| c.path != "/v1/authenticate").count(),
+        2,
+        "nothing beyond the two accepted calls reached a service route"
+    );
+}
+
+#[tokio::test]
+async fn the_operator_budget_is_separate_from_the_firm_budget() {
+    let s = stub(happy).await;
+    let gw = gateway_with(format!("http://{}", s.addr), Duration::from_secs(2), 60, 1);
+    assert_eq!(
+        post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some("{}"))
+            .await
+            .status,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some("{}"))
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let body = json!({"slug": "example-attorneys"}).to_string();
+    assert_eq!(
+        post_as(&gw.app, "/v1/tenants", OPERATOR_KEY.as_str(), Some(&body))
+            .await
+            .status,
+        StatusCode::CREATED,
+        "one firm's exhaustion does not touch the operator"
+    );
+}
+
+// ---------- usage ----------
+
+#[tokio::test]
+async fn usage_totals_are_served_on_the_internal_router_only() {
+    let s = stub(happy).await;
+    let gw = gateway_with(format!("http://{}", s.addr), Duration::from_secs(2), 60, 1);
+    let body = json!({"name": "k", "scopes": ["time:read"]}).to_string();
+    assert_eq!(
+        post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some(&body))
+            .await
+            .status,
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        post_as(&gw.app, "/v1/api-keys", TENANT_KEY.as_str(), Some(&body))
+            .await
+            .status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        call(&gw.app, Method::POST, "/v1/api-keys", &[], Some("{}"))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // The public listener knows nothing about usage.
+    assert_eq!(
+        call(&gw.app, Method::GET, "/internal/usage", &[], None)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+
+    let r = call(&gw.internal, Method::GET, "/internal/usage", &[], None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let usage: Value = serde_json::from_str(&r.text).unwrap();
+    assert_eq!(usage["totals"]["requests"], 3);
+    assert_eq!(usage["totals"]["rateLimited"], 1);
+    assert_eq!(usage["totals"]["unidentified"], 1);
+    assert!(usage["totals"]["bytesIn"].as_u64().unwrap() > 0);
+    assert!(usage["totals"]["bytesOut"].as_u64().unwrap() > 0);
+    let firm = Uuid::from_u128(11).to_string();
+    assert_eq!(
+        usage["tenants"][&firm]["requests"], 2,
+        "the 429 is attributed to the firm too"
+    );
+    assert_eq!(usage["tenants"][&firm]["rateLimited"], 1);
+    assert_eq!(usage["operator"]["requests"], 0);
+    assert!(usage["since"].as_str().unwrap().ends_with('Z'));
+    assert!(usage["uptimeSeconds"].is_u64());
+
+    // The internal listener serves nothing else.
+    assert_eq!(
+        post_as(&gw.internal, "/v1/api-keys", TENANT_KEY.as_str(), Some("{}"))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
     );
 }

@@ -21,9 +21,10 @@ cargo run -p timelex-gateway -- keygen           # prints a key pair: put the li
 # Database URLs (your own passwords): TIMELEX_MIGRATOR_DATABASE_URL, TIMELEX_IDENTITY_DATABASE_URL
 cargo run -p timelex-identity-service -- migrate  # once, and after each release
 cargo run -p timelex-identity-service             # 127.0.0.1:8081, private: only the gateway should reach it
-cargo run -p timelex-gateway                      # 127.0.0.1:8088
+cargo run -p timelex-gateway                      # 127.0.0.1:8088; usage on 127.0.0.1:8089
 curl -X POST http://127.0.0.1:8088/v1/tenants -H "authorization: Bearer $YOUR_OPERATOR_KEY" \
   -H 'content-type: application/json' \
   -d '{"slug":"example-attorneys","displayName":"Example Attorneys Inc","adminEmail":"partner@example-attorneys.example","adminDisplayName":"Pat Partner"}'
+curl -s http://127.0.0.1:8089/internal/usage      # what the gateway has handled since it started
 ```
-Environment variables are documented in `services/gateway/src/config.rs` and `services/identity/src/main.rs`. The `initialApiKey.token` in the answer is shown once.
+Environment variables are documented in `services/gateway/src/config.rs` and `services/identity/src/main.rs`. The gateway reads service addresses from `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`), the firm budget from `TIMELEX_RATE_LIMIT_PER_MINUTE` and `TIMELEX_RATE_LIMIT_BURST`, and binds the usage listener on `TIMELEX_GATEWAY_INTERNAL_ADDR`; keep that address on loopback. The `initialApiKey.token` in the answer is shown once.

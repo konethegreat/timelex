@@ -3,6 +3,9 @@
 //! P1-04 part a acceptance: "an authenticated call routes to a service", plus the security properties
 //! that only show up when the pieces are joined.
 
+use std::collections::HashMap;
+use std::time::Duration;
+
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::{header, Method, StatusCode};
@@ -24,6 +27,27 @@ struct World {
     db: TestDb,
     gateway: Router,
     identity_url: String,
+    /// The gateway's private key, so a test can build a second gateway identity still trusts.
+    private_key: String,
+}
+
+/// Build a gateway for this world, with the given firm budget.
+fn build_gateway(
+    private_key: &str,
+    identity_url: &str,
+    per_minute: u32,
+    burst: u32,
+) -> timelex_gateway::Gateway {
+    timelex_gateway::app_with(Config {
+        signer: Signer::from_base64("k1", private_key).unwrap(),
+        operator_key_hashes: vec![sha256(OPERATOR_KEY.as_str())],
+        service_urls: HashMap::from([("identity".to_owned(), identity_url.to_owned())]),
+        upstream_timeout: Duration::from_secs(5),
+        rate_limit_per_minute: per_minute,
+        rate_limit_burst: burst,
+        internal_addr: "127.0.0.1:8089".parse().unwrap(),
+    })
+    .unwrap()
 }
 
 async fn world() -> Option<World> {
@@ -43,17 +67,12 @@ async fn world() -> Option<World> {
     tokio::spawn(async move { axum::serve(listener, identity).await.unwrap() });
 
     // Gateway: holds the private key and the operator key's hash.
-    let gateway = timelex_gateway::app_with(Config {
-        signer: Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap(),
-        operator_key_hashes: vec![sha256(OPERATOR_KEY.as_str())],
-        identity_url: identity_url.clone(),
-        upstream_timeout: std::time::Duration::from_secs(5),
-    })
-    .unwrap();
+    let gateway = build_gateway(&kp.private_pkcs8_base64, &identity_url, 600, 120);
     Some(World {
         db,
-        gateway,
+        gateway: gateway.public,
         identity_url,
+        private_key: kp.private_pkcs8_base64,
     })
 }
 
@@ -85,6 +104,23 @@ async fn post(app: &Router, path: &str, key: &str, body: Option<Value>) -> Reply
 
 fn firm(slug: &str) -> Value {
     json!({"slug": slug, "displayName": "Example Attorneys Inc", "adminEmail": format!("partner@{slug}.example"), "adminDisplayName": "Pat Partner"})
+}
+
+async fn get(app: &Router, path: &str) -> Value {
+    let r = app
+        .clone()
+        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let (parts, body) = r.into_parts();
+    let bytes = body.collect().await.unwrap().to_bytes();
+    assert_eq!(
+        parts.status,
+        StatusCode::OK,
+        "GET {path}: {}",
+        String::from_utf8_lossy(&bytes)
+    );
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 async fn create_firm(w: &World, slug: &str) -> Value {
@@ -284,13 +320,7 @@ async fn a_stopped_identity_service_makes_the_gateway_fail_closed() {
         }
     });
     let kp = generate_keypair().unwrap();
-    let broken = timelex_gateway::app_with(Config {
-        signer: Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap(),
-        operator_key_hashes: vec![sha256(OPERATOR_KEY.as_str())],
-        identity_url: dead_url,
-        upstream_timeout: std::time::Duration::from_secs(2),
-    })
-    .unwrap();
+    let broken = build_gateway(&kp.private_pkcs8_base64, &dead_url, 600, 120).public;
     let r = post(
         &broken,
         "/v1/api-keys",
@@ -299,5 +329,36 @@ async fn a_stopped_identity_service_makes_the_gateway_fail_closed() {
     )
     .await;
     assert_eq!(r.status, StatusCode::BAD_GATEWAY);
+    w.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_firm_over_its_budget_is_refused_and_the_refusal_is_metered() {
+    let Some(w) = world().await else { return };
+    let a = create_firm(&w, "firm-a").await;
+    let b = create_firm(&w, "firm-b").await;
+    let key_a = a["initialApiKey"]["token"].as_str().unwrap();
+    let key_b = b["initialApiKey"]["token"].as_str().unwrap();
+    let tenant_a = a["tenantId"].as_str().unwrap().to_owned();
+
+    // One token each, so the real identity service is in the loop for exactly the calls it should see.
+    let tight = build_gateway(&w.private_key, &w.identity_url, 60, 1);
+    let issue = || json!({"name": "k", "scopes": ["time:read"]});
+    let r = post(&tight.public, "/v1/api-keys", key_a, Some(issue())).await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.json);
+    let r = post(&tight.public, "/v1/api-keys", key_a, Some(issue())).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(r.json["detail"].as_str().unwrap().contains("retry"));
+
+    // Another firm still has its own budget.
+    let r = post(&tight.public, "/v1/api-keys", key_b, Some(issue())).await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.json);
+
+    let usage = get(&tight.internal, "/internal/usage").await;
+    assert_eq!(usage["totals"]["requests"], 3);
+    assert_eq!(usage["totals"]["rateLimited"], 1);
+    assert_eq!(usage["tenants"][&tenant_a]["requests"], 2);
+    assert_eq!(usage["tenants"][&tenant_a]["rateLimited"], 1);
+    assert_eq!(usage["tenants"][b["tenantId"].as_str().unwrap()]["requests"], 1);
     w.db.cleanup().await;
 }

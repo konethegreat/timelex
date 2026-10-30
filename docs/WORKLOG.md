@@ -4,6 +4,26 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-30 (later): P1-04 part b — rate limits and metering
+**Trigger:** Continuing part b after the contracts PR merged (#16).
+
+**Done (PR B)**
+- `services/gateway/src/limits.rs`: token buckets keyed per firm and per operator; fake-clock tests for burst, refill, isolation and a clock going backwards. The map recovers from a poisoned mutex rather than taking the gateway down.
+- `services/gateway/src/meter.rs`: one metadata-only JSON record per handled request to stdout; running totals per firm; `GET /internal/usage` payload with `since` and uptime.
+- `services/gateway/src/config.rs`: `TIMELEX_SERVICE_URLS` (validated, `identity` required) replaces `TIMELEX_IDENTITY_URL`; `TIMELEX_RATE_LIMIT_PER_MINUTE`/`_BURST` (default 600/120); `TIMELEX_GATEWAY_INTERNAL_ADDR` (default `127.0.0.1:8089`). Bad values fail at start-up; zero is refused so a typo cannot lock a firm out.
+- `services/gateway/src/proxy.rs`: authentication, then the budget check, then the body read and forward. One `Trip` records every exit path: 401, 429, 400, 413, 502/504 and success. 429 carries `Retry-After`.
+- `app_with` now returns `Gateway { public, internal }` so the binary binds the usage listener separately and warns if it is not loopback. Tests updated; 3 new routing tests and 1 new end-to-end test cover 429, operator isolation, internal-only usage and per-firm totals.
+- READMEs, architecture table and task list updated.
+
+**Decisions and why**
+- The budget is spent **after** authentication, so a 429 still costs one `authenticate` call. That is the price of not trusting the key prefix; documented as the known amplification gap rather than solved twice.
+- The 429 request's body is never read and nothing is forwarded, so a firm at its limit cannot make identity or the service do work.
+- Usage is served from a second listener, not the public one; a routing test asserts `/internal/usage` is a 404 on the public app and `/v1/api-keys` is a 404 on the internal one.
+
+**Verified:** `cargo fmt --all`, `cargo clippy -p timelex-gateway --all-targets -- -D warnings`, `TIMELEX_SKIP_DB_TESTS=1 cargo test -p timelex-gateway` (20 unit + 2 contract + 16 routing passing; 6 end-to-end pass early without a database, CI runs them on Postgres).
+
+**Next:** PR C (`POST /mcp` routed by `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` through `contracts/mcp/routes.json`, 501 for unrouted methods).
+
 ## 2026-10-30: P1-04 part b starts with contracts
 **Trigger:** Kone asked to pick the system up again and chose gateway part b (rate limits, metering, `Mcp-Method` routing). Context reload confirmed the ClearCut boundary: billing calls ClearCut directly (ADR-0008); ClearCut is not a gateway target.
 
