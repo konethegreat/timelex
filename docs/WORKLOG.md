@@ -4,6 +4,24 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-30 (latest): P1-05 vault v0 — rules, sealed schema and store
+**Trigger:** increment 1 (contract and docs) merged as `9a7c066`; continuing with the part that has to be right before any endpoint exists.
+
+**Done (increment 2)**
+- [`crates/timelex-vault`](../crates/timelex-vault), a no-I/O crate: the four kinds and their provider hosts; validation of value (printable ASCII, 8–4096), label and hosts (narrowing only, never widening); a zeroising `SecretValue` with redacted `Debug`; envelope encryption (AES-256-GCM per secret, data key wrapped behind a `KeyWrapper` trait) with tenant, secret id and kind bound into **both** seals; and the per-firm audit hash chain. Entropy and the clock are parameters, so every rule is tested with fixed inputs (27 unit tests, 1 doctest).
+- [`services/vault/migrations/0001_vault.sql`](../services/vault/migrations/0001_vault.sql): `secrets` (sealed columns NULL together, coarse CHECKs as a second line, a partial unique index giving one live secret per kind, a CHECK that a revoked row cannot hold a value), `secret_audit` (append-only; no UPDATE or DELETE grant) and `chain_heads`. All three get the standard tenant policy; `vault` is provisioned in the bootstrap.
+- Store (`services/vault/src/store.rs`): put (create or replace), list metadata, rotate, revoke, open-for-test, record-test. Each runs in one tenant transaction and appends one audit entry under a `FOR UPDATE` lock on the chain head, so chains cannot fork. Revocation NULLs every sealed column.
+- 11 database tests: value never stored, replace destroys the old value, rotate clears the test stamp, revoke keeps metadata, another firm sees nothing, no permission writes nothing, the database refuses a clear value / bad host / rewritten audit / deleted secret, every vault table has the policy, two firms have chains that both start at 1.
+
+**Decisions and why**
+- **Binding in the seals, not just the row.** Copying a row to another firm, or relabelling a key's kind, makes it fail to open rather than be used against the wrong provider.
+- **Replacement, rotation and revocation all destroy the old data key**, so a database copy taken later cannot decrypt a superseded value. Revoked rows keep metadata (provider, last four, when) and nothing else.
+- **One live secret per kind is a database guarantee**, not a code convention: a partial unique index. A PUT racing another PUT retries once and replaces.
+- **The audit chain is per firm and written in the same transaction as the change.** A separate audit writer would allow a change with no entry.
+- **Testing is not use:** `lastTestedAt` is set by `record_test`; `lastUsedAt` is reserved for leases and stays NULL in v0.
+
+**Next:** increment 3 — the HTTP layer (internal `principal` tokens, `settings:manage`, problem details, 64 KiB limit), the validator trait with one real Anthropic check, the binary, and HTTP tests proving no plaintext is returned or logged.
+
 ## 2026-10-30 (even later): P1-05 vault v0 starts with the contract
 **Trigger:** After gateway part b merged (#18), Kone chose P1-05 (vault v0) next, with REST only in this version (MCP waits for P1-15) and a validator trait plus one real Anthropic check.
 

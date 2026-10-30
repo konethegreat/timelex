@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | 🔄 contract 0.1.0 done ([`vault.v1.yaml`](../../contracts/openapi/vault.v1.yaml)); domain crate, schema and HTTP service next |
+| **Status** | 🔄 contract 0.1.0 done; domain crate, sealed schema and store done (27 unit + 11 database tests); HTTP service and the Anthropic check next |
 | **Language** | Rust |
 | **Phase** | 1 |
 | **Owns data** | `vault` schema: encrypted secrets, wrapped data keys, audit chain |
@@ -16,6 +16,12 @@ Custody of each tenant's bring-your-own keys and OAuth tokens ([ADR-0004](../../
 - Envelope encryption: a fresh AES-256-GCM data key per secret, wrapped by the vault's key-encryption key
 - Write-only API: create, list metadata, test, rotate and revoke; a value is never returned
 - Typed secrets with allowed-host lists; tamper-evident access log (hash chain, per firm)
+
+## What exists today
+- **[`crates/timelex-vault`](../../crates/timelex-vault)** (no I/O): the four secret kinds and their provider hosts; value, label and host validation; a zeroising `SecretValue`; envelope encryption with the tenant, secret id and kind bound into both seals; the per-firm hash chain. Entropy and the clock are passed in, so every rule runs with fixed inputs in a test.
+- **Schema** ([`migrations/0001_vault.sql`](migrations/0001_vault.sql)): `secrets` (all sealed columns NULL together, a partial unique index for one live secret per kind, values impossible to restore after revocation), `secret_audit` (append-only; no UPDATE or DELETE is granted), `chain_heads` (the row lock that keeps a chain from forking). All three tables carry the standard tenant policy.
+- **Store** (`src/store.rs`): put (create or replace), list metadata, rotate, revoke, open-for-test and record-test, each in one tenant transaction with its audit entry. `settings:manage` is required for every operation.
+- **Not yet:** the HTTP layer, the provider validator and the binary.
 
 ## Contract (0.1.0)
 [`contracts/openapi/vault.v1.yaml`](../../contracts/openapi/vault.v1.yaml).
@@ -40,6 +46,10 @@ Custody of each tenant's bring-your-own keys and OAuth tokens ([ADR-0004](../../
 - No pooling of keys across tenants
 
 ## Run
-Not runnable yet; the domain crate and service follow in P1-05. See [TASKS.md](../../docs/TASKS.md).
+```bash
+cargo test -p timelex-vault                 # rules and encryption, no database needed
+cargo test -p timelex-vault-service         # the store needs TIMELEX_TEST_DATABASE_URL
+```
+See [TASKS.md](../../docs/TASKS.md) for the remaining P1-05 work.
 
 See also: [ARCHITECTURE.md](../../docs/ARCHITECTURE.md), [ADR-0001](../../docs/adr/0001-service-boundaries-and-contract-first.md).
