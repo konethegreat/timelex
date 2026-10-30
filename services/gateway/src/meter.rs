@@ -32,7 +32,7 @@ pub enum CallerKind {
 /// One handled request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UsageRecord {
+pub struct UsageRecord<'a> {
     /// When the gateway answered, RFC 3339.
     pub at: String,
     pub caller: CallerKind,
@@ -42,10 +42,14 @@ pub struct UsageRecord {
     pub user_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_id: Option<Uuid>,
-    /// The gateway route, for example `apiKeys.issue`.
+    /// The gateway route, for example `apiKeys.issue` or `mcp.call`.
     pub route: &'static str,
-    /// The service the request was aimed at, for example `identity`.
-    pub service: &'static str,
+    /// The service the request was aimed at; absent when it was refused before routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<&'a str>,
+    /// The MCP tool for a `tools/call`, once the routing table named its service.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<&'a str>,
     pub method: String,
     pub status: u16,
     pub duration_ms: u64,
@@ -131,7 +135,7 @@ impl Meter {
     }
 
     /// Emit one record and add it to the running totals.
-    pub fn record(&self, record: &UsageRecord) {
+    pub fn record(&self, record: &UsageRecord<'_>) {
         // Serialising a fixed struct cannot fail; if it somehow did, the totals below still count it.
         if let Ok(line) = serde_json::to_string(record) {
             (self.sink)(&line);
@@ -173,7 +177,7 @@ impl Meter {
     }
 }
 
-fn add(usage: &mut UsageTotals, record: &UsageRecord) {
+fn add(usage: &mut UsageTotals, record: &UsageRecord<'_>) {
     usage.requests += 1;
     usage.rate_limited += u64::from(record.rate_limited);
     usage.bytes_in += record.bytes_in;
@@ -190,7 +194,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn record(caller: CallerKind, tenant: Option<u128>, rate_limited: bool) -> UsageRecord {
+    fn record(caller: CallerKind, tenant: Option<u128>, rate_limited: bool) -> UsageRecord<'static> {
         UsageRecord {
             at: "2026-10-30T09:00:00Z".into(),
             caller,
@@ -198,7 +202,8 @@ mod tests {
             user_id: tenant.map(|t| Uuid::from_u128(t + 1)),
             key_id: tenant.map(|t| Uuid::from_u128(t + 2)),
             route: "apiKeys.issue",
-            service: "identity",
+            service: Some("identity"),
+            tool: None,
             method: "POST".into(),
             status: if rate_limited { 429 } else { 201 },
             duration_ms: 3,
@@ -236,6 +241,7 @@ mod tests {
         assert_eq!(first["status"], 201);
         assert_eq!(first["rateLimited"], false);
         assert!(first.get("body").is_none(), "no body field exists");
+        assert!(first.get("tool").is_none(), "no tool for a REST call");
 
         let s = m.snapshot();
         assert_eq!(s.totals.requests, 5);
@@ -248,6 +254,22 @@ mod tests {
         assert_eq!(s.tenants[&Uuid::from_u128(11)].rate_limited, 1);
         assert_eq!(s.tenants[&Uuid::from_u128(12)].requests, 1);
         assert_eq!(s.tenants.len(), 2);
+    }
+
+    #[test]
+    fn an_mcp_record_names_the_tool_and_its_service() {
+        let (m, lines) = meter();
+        let record = UsageRecord {
+            route: "mcp.call",
+            service: Some("time-ledger"),
+            tool: Some("propose_entry"),
+            ..record(CallerKind::Principal, Some(11), false)
+        };
+        m.record(&record);
+        let json: serde_json::Value = serde_json::from_str(&lines.lock().unwrap()[0]).unwrap();
+        assert_eq!(json["route"], "mcp.call");
+        assert_eq!(json["service"], "time-ledger");
+        assert_eq!(json["tool"], "propose_entry");
     }
 
     #[test]
