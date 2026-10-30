@@ -142,7 +142,7 @@ fn last_four(value: &Value) -> String {
 /// Create one secret and return its metadata JSON.
 async fn stored(env: &Env, bearer: &str, value: &Value) -> Value {
     let r = put_secret(env, bearer, value).await;
-    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    assert_eq!(r.status, StatusCode::CREATED);
     r.json()
 }
 
@@ -159,7 +159,7 @@ async fn listed(env: &Env, bearer: &str, query: &str) -> Value {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert_eq!(r.status, StatusCode::OK);
     r.json()
 }
 
@@ -234,7 +234,7 @@ async fn only_a_principal_with_settings_manage_may_touch_secrets() {
         Some(body),
     )
     .await;
-    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    assert_eq!(r.status, StatusCode::CREATED);
     env.db.cleanup().await;
 }
 
@@ -268,7 +268,7 @@ async fn a_secret_is_created_listed_and_revoked_over_http() {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::NO_CONTENT, "{}", r.text);
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
 
     assert!(listed(&env, &bearer, "").await["secrets"]
         .as_array()
@@ -297,7 +297,7 @@ async fn putting_the_same_kind_again_is_a_replacement_under_the_same_id() {
     let first = stored(&env, &bearer, &value()).await;
 
     let second = put_secret(&env, &bearer, &value()).await;
-    assert_eq!(second.status, StatusCode::OK, "{}", second.text);
+    assert_eq!(second.status, StatusCode::OK);
     let second = second.json();
     assert_eq!(id_of(&first), id_of(&second));
     assert_ne!(first["lastFour"], second["lastFour"]);
@@ -368,10 +368,14 @@ async fn a_malformed_body_is_400_and_an_oversized_one_is_413() {
         json!({ "value": value(), "surprise": true }).to_string(),
         "not json at all".to_string(),
     ];
-    for body in bodies {
-        let r = send(&env.app, Method::PUT, path, Some(&bearer), Some(body.clone())).await;
-        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{body}: {}", r.text);
-        assert_eq!(r.json()["type"], "urn:timelex:problem:invalid-request");
+    for (i, body) in bodies.into_iter().enumerate() {
+        let r = send(&env.app, Method::PUT, path, Some(&bearer), Some(body)).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "body {i}");
+        assert_eq!(
+            r.json()["type"],
+            "urn:timelex:problem:invalid-request",
+            "body {i}"
+        );
     }
 
     let huge = json!({ "value": "x".repeat(70 * 1024) }).to_string();
@@ -447,7 +451,7 @@ async fn a_passing_test_is_200_and_stamps_the_test_not_the_use() {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json()["ok"], true);
     assert!(r.json()["checkedAt"].is_string());
 
@@ -475,7 +479,7 @@ async fn a_rejected_secret_is_422_and_the_test_is_recorded() {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", r.text);
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(r.json()["type"], "urn:timelex:problem:provider-rejected");
 
     let list = listed(&env, &bearer, "").await;
@@ -500,7 +504,7 @@ async fn an_unreachable_provider_is_502_and_no_test_is_recorded() {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::BAD_GATEWAY, "{}", r.text);
+    assert_eq!(r.status, StatusCode::BAD_GATEWAY);
     assert_eq!(r.json()["type"], "urn:timelex:problem:provider-unreachable");
 
     // A provider outage must not look like a bad key.
@@ -528,7 +532,7 @@ async fn another_firms_secret_is_a_404_for_every_operation() {
         let body = (method == Method::POST && path.ends_with("rotate"))
             .then(|| json!({ "value": value() }).to_string());
         let r = send(&env.app, method.clone(), &path, Some(&b), body).await;
-        assert_eq!(r.status, StatusCode::NOT_FOUND, "{method} {path}: {}", r.text);
+        assert_eq!(r.status, StatusCode::NOT_FOUND, "{method} {path}");
     }
     // The other firm never sees it either.
     assert!(listed(&env, &b, "?includeRevoked=true").await["secrets"]
@@ -554,7 +558,7 @@ async fn rotating_keeps_the_id_and_a_revoked_secret_is_409() {
         Some(json!({ "value": rotated }).to_string()),
     )
     .await;
-    assert_eq!(r.status, StatusCode::OK, "{}", r.text);
+    assert_eq!(r.status, StatusCode::OK);
     let metadata = r.json();
     assert_eq!(id_of(&metadata), id);
     assert_eq!(metadata["label"], "Firm Anthropic key");
@@ -576,7 +580,7 @@ async fn rotating_keeps_the_id_and_a_revoked_secret_is_409() {
         Some(json!({ "value": value() }).to_string()),
     )
     .await;
-    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.text);
+    assert_eq!(r.status, StatusCode::CONFLICT);
     let r = send(
         &env.app,
         Method::POST,
@@ -585,6 +589,6 @@ async fn rotating_keeps_the_id_and_a_revoked_secret_is_409() {
         None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.text);
+    assert_eq!(r.status, StatusCode::CONFLICT);
     env.db.cleanup().await;
 }
