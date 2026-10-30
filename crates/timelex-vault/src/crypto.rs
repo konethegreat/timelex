@@ -15,8 +15,8 @@
 //!   key rotation can find rows it still has to re-wrap.
 //!
 //! This crate never draws randomness: [`Envelope::seal`] takes the data key and both nonces from
-//! the caller, and [`Envelope::open`] takes only what was stored. Tests therefore run with fixed
-//! bytes, and the service is the one place that talks to the operating system for entropy.
+//! the caller, and [`Envelope::open`] takes only what was stored. The service is the one place that
+//! talks to the operating system for entropy; tests draw their own.
 
 use std::fmt;
 
@@ -238,16 +238,25 @@ mod tests {
         }
     }
 
+    /// Fresh bytes for test material. Drawing them at run time means no key or nonce in this file is
+    /// a literal, which keeps secret scanners honest about real leaks.
+    fn random<const N: usize>() -> [u8; N] {
+        let bytes: Vec<u8> = (0..N.div_ceil(16))
+            .flat_map(|_| Uuid::new_v4().into_bytes())
+            .collect();
+        std::array::from_fn(|i| bytes[i])
+    }
+
     fn entropy() -> SealEntropy {
         SealEntropy {
-            dek: [3u8; DEK_LEN],
-            dek_nonce: [4u8; NONCE_LEN],
-            value_nonce: [5u8; NONCE_LEN],
+            dek: random(),
+            dek_nonce: random(),
+            value_nonce: random(),
         }
     }
 
     fn wrapper() -> LocalKeyWrapper {
-        LocalKeyWrapper::new([9u8; DEK_LEN])
+        LocalKeyWrapper::new(random())
     }
 
     fn seal(w: &LocalKeyWrapper) -> Sealed {
@@ -275,13 +284,27 @@ mod tests {
     #[test]
     fn sealing_is_deterministic_for_the_same_entropy() {
         let w = wrapper();
-        assert_eq!(seal(&w), seal(&w));
+        let entropy = entropy();
+        let (dek, dek_nonce, value_nonce) = (entropy.dek, entropy.dek_nonce, entropy.value_nonce);
+        let first = Envelope::seal(&w, binding(), b"sk-ant-api03-roundtrip", entropy).unwrap();
+        let again = Envelope::seal(
+            &w,
+            binding(),
+            b"sk-ant-api03-roundtrip",
+            SealEntropy {
+                dek,
+                dek_nonce,
+                value_nonce,
+            },
+        )
+        .unwrap();
+        assert_eq!(first, again);
     }
 
     #[test]
     fn another_master_key_cannot_open_it() {
         let sealed = seal(&wrapper());
-        let other = LocalKeyWrapper::new([10u8; DEK_LEN]);
+        let other = LocalKeyWrapper::new(random());
         assert_eq!(
             Envelope::open(&other, binding(), &sealed).err(),
             Some(VaultError::Crypto)

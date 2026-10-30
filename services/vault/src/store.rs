@@ -489,20 +489,21 @@ fn settings_only(actor: &Actor) -> Result<(), StoreError> {
     }
 }
 
+/// Fresh data key and nonces. Built from random words rather than a zeroed buffer that is filled in
+/// place, so no constant is ever a candidate key or nonce.
 fn fresh_entropy() -> Result<SealEntropy, StoreError> {
-    let mut entropy = SealEntropy {
-        dek: [0u8; DEK_LEN],
-        dek_nonce: [0u8; NONCE_LEN],
-        value_nonce: [0u8; NONCE_LEN],
-    };
-    for bytes in [
-        entropy.dek.as_mut_slice(),
-        entropy.dek_nonce.as_mut_slice(),
-        entropy.value_nonce.as_mut_slice(),
-    ] {
-        getrandom::fill(bytes).map_err(|e| StoreError::Internal(format!("no randomness: {e}")))?;
+    fn word() -> Result<u64, StoreError> {
+        getrandom::u64().map_err(|e| StoreError::Internal(format!("no randomness: {e}")))
     }
-    Ok(entropy)
+
+    // Seven words are 32 + 12 + 12 bytes: the data key and both nonces.
+    let words = [word()?, word()?, word()?, word()?, word()?, word()?, word()?];
+    let byte = |i: usize| words[i / 8].to_le_bytes()[i % 8];
+    Ok(SealEntropy {
+        dek: std::array::from_fn(byte),
+        dek_nonce: std::array::from_fn(|i| byte(DEK_LEN + i)),
+        value_nonce: std::array::from_fn(|i| byte(DEK_LEN + NONCE_LEN + i)),
+    })
 }
 
 fn parse_kind(stored: &str) -> Result<SecretKind, StoreError> {

@@ -17,3 +17,7 @@ sha2 = "0.11"
 timelex-identity = { path = "../timelex-identity" }
 uuid = "1"
 zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Tests build their keys and nonces at run time; uuid 4 is the random source already in the tree.
+uuid = { version = "1", features = ["v4"] }

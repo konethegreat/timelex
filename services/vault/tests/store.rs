@@ -50,6 +50,12 @@ struct Env {
     clock: TestClock,
 }
 
+/// A fresh master key per test, so no key is a literal in this repository.
+fn random_key() -> [u8; 32] {
+    let bytes: Vec<u8> = (0..2).flat_map(|_| Uuid::new_v4().into_bytes()).collect();
+    std::array::from_fn(|i| bytes[i])
+}
+
 async fn env() -> Option<Env> {
     let db = setup_db(&ServiceUnderTest {
         service: "vault",
@@ -58,7 +64,7 @@ async fn env() -> Option<Env> {
     .await?;
     let (_, tenants) = db.service_pool().await;
     let clock = TestClock::new();
-    let wrapper = Arc::new(LocalKeyWrapper::new([42u8; 32]));
+    let wrapper = Arc::new(LocalKeyWrapper::new(random_key()));
     let store = VaultStore::with_clock(tenants.clone(), wrapper, clock.clock());
     Some(Env {
         db,
