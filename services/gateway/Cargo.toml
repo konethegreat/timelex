@@ -29,4 +29,4 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
 timelex-identity-service = { path = "../identity" }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }

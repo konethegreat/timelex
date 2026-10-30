@@ -72,10 +72,13 @@ pub async fn setup(spec: &ServiceUnderTest) -> Option<TestDb> {
         .execute(&mut lock)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("CREATE DATABASE {name}"))
-        .execute(&mut lock)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "CREATE DATABASE {}",
+        identifier(&name)
+    )))
+    .execute(&mut lock)
+    .await
+    .unwrap();
 
     let admin = PgPoolOptions::new()
         .max_connections(4)
@@ -92,10 +95,13 @@ pub async fn setup(spec: &ServiceUnderTest) -> Option<TestDb> {
         .await
         .unwrap();
     for role in ["timelex_migrator".to_string(), format!("svc_{}", spec.service)] {
-        sqlx::raw_sql(&format!("ALTER ROLE {role} LOGIN"))
-            .execute(&admin)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "ALTER ROLE {} LOGIN",
+            identifier(&role)
+        )))
+        .execute(&admin)
+        .await
+        .unwrap();
     }
 
     // The service's own migrations, run as the migrator with search_path = the service schema.
@@ -114,6 +120,17 @@ pub async fn setup(spec: &ServiceUnderTest) -> Option<TestDb> {
         service: spec.service,
         admin,
     })
+}
+
+/// A database or role name that is safe to interpolate into a statement. Postgres will not take
+/// these as bind parameters, so sqlx 0.9 asks for an explicit assertion; this guard is what makes
+/// the assertion true. Every caller passes a generated name or a fixed service name, never input.
+fn identifier(value: &str) -> &str {
+    assert!(
+        !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "a SQL identifier may only contain ASCII letters, digits and underscores"
+    );
+    value
 }
 
 async fn connect_as(base: &PgConnectOptions, db: &str, role: &str, search_path: Option<&str>) -> PgPool {
@@ -154,10 +171,13 @@ impl TestDb {
             .execute(&self.admin)
             .await
             .unwrap();
-        sqlx::raw_sql(&format!("ALTER ROLE svc_{service} LOGIN"))
-            .execute(&self.admin)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "ALTER ROLE {} LOGIN",
+            identifier(&format!("svc_{service}"))
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
     }
 
     /// Drop this test's database.
@@ -167,10 +187,13 @@ impl TestDb {
         } = self;
         admin.close().await;
         let mut c = PgConnection::connect_with(&base).await.unwrap();
-        sqlx::raw_sql(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
-            .execute(&mut c)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE IF EXISTS {} WITH (FORCE)",
+            identifier(&name)
+        )))
+        .execute(&mut c)
+        .await
+        .unwrap();
     }
 }
 

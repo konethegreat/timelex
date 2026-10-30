@@ -16,7 +16,7 @@ workspace = true
 testing = ["uuid/v4"]
 
 [dependencies]
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
 timelex-identity = { path = "../timelex-identity" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 uuid = "1"
