@@ -13,7 +13,8 @@ workspace = true
 
 [dependencies]
 base64 = "0.23"
-ed25519-dalek = { version = "3", features = ["pkcs8"] }
+# 3.0 gates EncodePrivateKey behind `alloc`; both features are needed for to_pkcs8_der.
+ed25519-dalek = { version = "3", features = ["alloc", "pkcs8"] }
 getrandom = "0.4"
 jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 serde = { version = "1", features = ["derive"] }
