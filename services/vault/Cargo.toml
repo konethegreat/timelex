@@ -23,7 +23,7 @@ timelex-auth = { path = "../../crates/timelex-auth" }
 timelex-db = { path = "../../crates/timelex-db" }
 timelex-identity = { path = "../../crates/timelex-identity" }
 timelex-vault = { path = "../../crates/timelex-vault" }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
 time = { version = "0.3", features = ["serde-well-known"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 uuid = "1"
