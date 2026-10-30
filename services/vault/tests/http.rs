@@ -323,34 +323,49 @@ async fn no_response_ever_contains_the_value() {
 
     let rotated = value();
     let replies = [
-        put_secret(&env, &bearer, &secret).await,
-        send(&env.app, Method::GET, "/v1/secrets", Some(&bearer), None).await,
-        send(
-            &env.app,
-            Method::POST,
-            &format!("/v1/secrets/{id}/test"),
-            Some(&bearer),
-            None,
-        )
-        .await,
-        send(
-            &env.app,
-            Method::POST,
-            &format!("/v1/secrets/{id}/rotate"),
-            Some(&bearer),
-            Some(json!({ "value": rotated }).to_string()),
-        )
-        .await,
+        ("create", put_secret(&env, &bearer, &secret).await),
+        (
+            "list",
+            send(&env.app, Method::GET, "/v1/secrets", Some(&bearer), None).await,
+        ),
+        (
+            "test",
+            send(
+                &env.app,
+                Method::POST,
+                &format!("/v1/secrets/{id}/test"),
+                Some(&bearer),
+                None,
+            )
+            .await,
+        ),
+        (
+            "rotate",
+            send(
+                &env.app,
+                Method::POST,
+                &format!("/v1/secrets/{id}/rotate"),
+                Some(&bearer),
+                Some(json!({ "value": rotated }).to_string()),
+            )
+            .await,
+        ),
     ];
-    for reply in &replies {
+    for (what, reply) in &replies {
         let text = &reply.text;
-        assert!(!text.contains(secret.as_str().unwrap()), "a value leaked: {text}");
+        assert!(
+            !text.contains(secret.as_str().unwrap()),
+            "the {what} response carried the value"
+        );
         assert!(
             !text.contains(rotated.as_str().unwrap()),
-            "a value leaked: {text}"
+            "the {what} response carried the rotated value"
         );
         // The last four characters are the advertised exception, so only the full value is checked.
-        assert!(!text.contains("value\":\"sk-ant"));
+        assert!(
+            !text.contains("value\":\"sk-ant"),
+            "the {what} response had a value-shaped field"
+        );
     }
     env.db.cleanup().await;
 }
