@@ -127,10 +127,7 @@ pub async fn setup(spec: &ServiceUnderTest) -> Option<TestDb> {
 /// the assertion true. Every caller passes a generated name or a fixed service name, never input.
 fn identifier(value: &str) -> &str {
     assert!(
-        !value.is_empty()
-            && value
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
         "a SQL identifier may only contain ASCII letters, digits and underscores"
     );
     value
