@@ -3059,6 +3059,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-outbox"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "sqlx",
+ "time",
+ "timelex-db",
+ "timelex-identity",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "timelex-types"
 version = "0.1.0"
 dependencies = [
@@ -3100,6 +3114,8 @@ dependencies = [
  "timelex-auth",
  "timelex-db",
  "timelex-identity",
+ "timelex-outbox",
+ "timelex-types",
  "timelex-vault",
  "tokio",
  "tower",

@@ -4,7 +4,28 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-10-31 (latest): gateway routes the vault — contract 0.4.0
+## 2026-10-31 (latest): P1-06 outbox and relay — the vault publishes `secret.*`
+**Trigger:** the vault could change a key with no way for another service to learn about it. P2-02 (capture-hub ingest) and the audit consumers need the event path first.
+
+**Done**
+- [`contracts/events/secret-event.schema.json`](../contracts/events/secret-event.schema.json) and a golden [`secret-event.json`](../contracts/examples/secret-event.json): envelope (`schemaVersion`, `ev_` id, `type`, `source: vault`, `tenantId`, `time`, `actor`, `data`), metadata only, and `result` required exactly for `secret.tested`. [`timelex-types`](../crates/timelex-types/src/lib.rs) mirrors it with `deny_unknown_fields`; 7 tests validate the example against the schema and round-trip every variant.
+- [`crates/timelex-outbox`](../crates/timelex-outbox): `EventId`, `Event`, `append` on the **writer's** connection, `Publisher` with a JSON-line stdout sink, and `Relay` (claim with `FOR UPDATE SKIP LOCKED`, 60-second lease, publish before mark, exponential backoff capped at 300 seconds). 2 unit tests and 4 database tests: a rollback leaves no event, a batch publishes once in order, a failed publish backs off and a later poll retries, and a redelivery after a crash has one effect for an idempotent consumer.
+- [`deploy/postgres/bootstrap/003_outbox.sql`](../deploy/postgres/bootstrap/003_outbox.sql): `platform.outbox` with a partial pending index. `provision_service` now grants each service `SELECT`/`INSERT`, `UPDATE` on the four delivery columns only, and `USAGE` on the sequence. The provisioning file moved to `004`, so bootstrap runs `001…004`.
+- [`services/vault/src/store.rs`](../services/vault/src/store.rs): every write appends its event in the same tenant transaction as the row change and the audit entry — created, updated, tested, rotated, revoked. Revoke and record-test read back the metadata in the same statement; a second revoke writes nothing. The value never enters the event. 12 database tests, one of them covering the whole sequence and scanning every payload for the values.
+- [`services/vault/src/main.rs`](../services/vault/src/main.rs): the service starts the relay by default on its own two-connection pool; `TIMELEX_OUTBOX_RELAY=0` disables it and `TIMELEX_OUTBOX_INTERVAL_MS` sets the poll interval.
+- [`services/gateway/tests/e2e.rs`](../services/gateway/tests/e2e.rs): the provider-key journey now asserts the five events in order, their tenant, their secret id, that the type column matches the envelope, and that no value appears in any payload.
+
+**Decisions and why**
+- **One `platform.outbox` for all services** ([ADR-0014](adr/0014-transactional-outbox.md)). The relay must read across tenants, and every service table is forced under row-level security with no bypass. The `platform` schema already sits outside the "every table has a tenant policy" guard, and column-limited grants keep producers from rewriting published rows.
+- **Publish first, mark second.** A crash between the two redelivers; it can never lose the event. The claim lease makes a stuck relay's batch available again.
+- **At least once in the relay, exactly once in the effect.** The envelope id is the dedupe key; a test proves a duplicate delivery changes nothing.
+- **The queue order is a claim order, not a promise across services.** `seq` is insert order, so consumers rely on facts and timestamps rather than a global sequence.
+- **Bootstrap order matters.** The table exists before provisioning runs, so the grant lives inside `provision_service` and future services inherit it.
+- **No `LISTEN/NOTIFY` yet.** Polling is the durable path; a notification would only shorten latency.
+
+**Next:** P1-07 compose stack and P1-10 telemetry, or P2-02's idempotent ingest as the first real consumer; the vault still waits on P1-13 for leases and P1-15 for MCP tools.
+
+## 2026-10-31: gateway routes the vault — contract 0.4.0
 **Trigger:** P1-05 increment 3 merged as `09f33bb` (#21), and the dependabot queue was cleared; the vault had no caller yet.
 
 **Done**

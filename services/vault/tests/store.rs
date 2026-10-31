@@ -613,3 +613,97 @@ fn the_test_value_is_long_enough_to_be_a_secret() {
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     needle.is_empty() || haystack.windows(needle.len()).any(|w| w == needle)
 }
+
+// ---------- events for other services (P1-06) ----------
+
+#[tokio::test]
+async fn every_write_appends_one_secret_event_without_the_value() {
+    let Some(env) = env().await else { return };
+    let tenant = TenantId::from_uuid(Uuid::new_v4());
+    let actor = settings(tenant);
+    let PutOutcome::Created(_) = env
+        .store
+        .put(actor.clone(), SecretKind::AnthropicApiKey, request(ANTHROPIC_V1))
+        .await
+        .unwrap()
+    else {
+        panic!("creates");
+    };
+    env.clock.advance(Duration::seconds(1));
+    let PutOutcome::Replaced(meta) = env
+        .store
+        .put(actor.clone(), SecretKind::AnthropicApiKey, request(ANTHROPIC_V2))
+        .await
+        .unwrap()
+    else {
+        panic!("replaces");
+    };
+    env.clock.advance(Duration::seconds(1));
+    env.store
+        .record_test(actor.clone(), meta.id, TestOutcome::Passed)
+        .await
+        .unwrap();
+    env.clock.advance(Duration::seconds(1));
+    env.store
+        .rotate(actor.clone(), meta.id, ANTHROPIC_V1.to_owned())
+        .await
+        .unwrap();
+    env.clock.advance(Duration::seconds(1));
+    env.store.revoke(actor.clone(), meta.id).await.unwrap();
+    // Revoking twice logs once, so it must publish once.
+    env.store.revoke(actor.clone(), meta.id).await.unwrap();
+
+    let rows =
+        sqlx::query("SELECT event_type, payload FROM platform.outbox WHERE tenant_id = $1 ORDER BY seq")
+            .bind(tenant.as_uuid())
+            .fetch_all(&env.db.admin)
+            .await
+            .unwrap();
+    let types: Vec<String> = rows.iter().map(|row| row.get("event_type")).collect();
+    assert_eq!(
+        types,
+        [
+            "secret.created",
+            "secret.updated",
+            "secret.tested",
+            "secret.rotated",
+            "secret.revoked"
+        ]
+    );
+
+    let mut ids = std::collections::HashSet::new();
+    for row in &rows {
+        let event_type: String = row.get("event_type");
+        let payload: serde_json::Value = row.get("payload");
+        let text = payload.to_string();
+        assert!(!text.contains(ANTHROPIC_V1), "the old value is not in the event");
+        assert!(!text.contains(ANTHROPIC_V2), "the new value is not in the event");
+        assert!(
+            !text.contains("sk-ant-api03"),
+            "no part of a value is in the event"
+        );
+        assert_eq!(payload["type"], event_type, "the column and envelope agree");
+        assert_eq!(payload["tenantId"], format!("tn_{}", tenant.to_hex32()));
+        assert_eq!(payload["data"]["secretId"], meta.id.as_uuid().to_string());
+        assert_eq!(payload["data"]["kind"], "anthropic_api_key");
+        assert_eq!(payload["data"]["label"], "Firm Claude key");
+        let last_four = match event_type.as_str() {
+            "secret.created" => "1111",
+            "secret.updated" | "secret.tested" => "9999",
+            _ => "1111",
+        };
+        assert_eq!(payload["data"]["lastFour"], last_four);
+        let id = payload["id"].as_str().unwrap();
+        assert!(id.starts_with("ev_") && id.len() == 35, "{id}");
+        assert!(ids.insert(id.to_owned()), "event ids are unique");
+    }
+
+    let tested = rows
+        .iter()
+        .find(|row| row.get::<String, _>("event_type") == "secret.tested")
+        .unwrap();
+    let payload: serde_json::Value = tested.get("payload");
+    assert_eq!(payload["data"]["result"], "passed");
+    assert_eq!(payload["source"], "vault");
+    assert_chain_verifies(&env.db, tenant).await;
+}

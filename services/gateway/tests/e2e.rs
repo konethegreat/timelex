@@ -14,6 +14,7 @@ use axum::http::{header, Method, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
+use sqlx::Row;
 use timelex_auth::{generate_keypair, Caller, Signer, Verifier};
 use timelex_db::testing::{setup as setup_db, ServiceUnderTest, TestDb};
 use timelex_db::TenantPool;
@@ -535,6 +536,44 @@ async fn a_firm_manages_its_provider_key_through_the_gateway() {
     let narrow = r.json["token"].as_str().unwrap().to_owned();
     let r = send(&w.gateway, Method::GET, "/v1/secrets", &narrow, None).await;
     assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    // Each write committed one secret event beside the state change, and no event carries a value.
+    // The relay publishes from this queue (ADR-0014).
+    let tenant_id = Uuid::parse_str(created["tenantId"].as_str().unwrap()).unwrap();
+    let rows =
+        sqlx::query("SELECT event_type, payload FROM platform.outbox WHERE tenant_id = $1 ORDER BY seq")
+            .bind(tenant_id)
+            .fetch_all(&w.db.admin)
+            .await
+            .unwrap();
+    let types: Vec<String> = rows.iter().map(|row| row.get("event_type")).collect();
+    assert_eq!(
+        types,
+        [
+            "secret.created",
+            "secret.updated",
+            "secret.tested",
+            "secret.rotated",
+            "secret.revoked"
+        ],
+        "one event per lifecycle step, in the order they happened"
+    );
+    for row in &rows {
+        let event_type: String = row.get("event_type");
+        let payload: Value = row.get("payload");
+        assert_eq!(payload["type"], event_type, "the column and envelope agree");
+        assert_eq!(
+            payload["tenantId"],
+            format!("tn_{}", tenant_id.simple()),
+            "the event names the tenant the identity service issued"
+        );
+        assert_eq!(payload["data"]["secretId"], id);
+        let text = payload.to_string();
+        assert!(
+            !text.contains(&value) && !text.contains(&replacement) && !text.contains(&next),
+            "an event carried a secret value: {text}"
+        );
+    }
 
     w.db.cleanup().await;
 }
