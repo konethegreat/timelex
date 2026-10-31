@@ -32,4 +32,4 @@ timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
 timelex-identity-service = { path = "../identity" }
 timelex-vault = { path = "../../crates/timelex-vault" }
 timelex-vault-service = { path = "../vault" }
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "json"] }

@@ -60,6 +60,18 @@ BEGIN
   EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), role_name);
 
   CALL platform.grant_tenancy(role_name);
+
+  -- P1-06 (ADR-0014): every service appends to the platform outbox and may move only the delivery
+  -- columns. The table is created by 003_outbox.sql, before this procedure is first called.
+  IF to_regclass('platform.outbox') IS NOT NULL THEN
+    EXECUTE format('GRANT SELECT, INSERT ON platform.outbox TO %I', role_name);
+    EXECUTE format(
+      'GRANT UPDATE (published_at, attempts, next_attempt_at, last_error) ON platform.outbox TO %I',
+      role_name);
+    EXECUTE format(
+      'GRANT USAGE ON SEQUENCE %s TO %I',
+      pg_get_serial_sequence('platform.outbox', 'seq'), role_name);
+  END IF;
 END
 $$;
 REVOKE ALL ON PROCEDURE platform.provision_service(text) FROM PUBLIC;

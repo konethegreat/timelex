@@ -21,6 +21,9 @@ use sqlx::Row;
 use time::OffsetDateTime;
 use timelex_db::{TenantPool, TenantTx};
 use timelex_identity::{require_permission, IdentityError, Permission, TenantId, UserId};
+use timelex_outbox as outbox;
+use timelex_outbox::EventId;
+use timelex_types::{SecretEvent, SecretEventData, SecretEventType, SecretTestResult};
 use timelex_vault::{
     entry_hash, prepare, AuditAction, AuditRecord, Binding, Envelope, KeyWrapper, SealEntropy, SecretId,
     SecretKind, SecretValue, DEK_LEN, GENESIS, NONCE_LEN,
@@ -190,6 +193,7 @@ impl VaultStore {
             .await?;
 
             let id = live.as_ref().map_or_else(Uuid::new_v4, |(id, _)| *id);
+            let secret_id = SecretId::from_uuid(id);
             let sealed = self.seal(actor.tenant, SecretId::from_uuid(id), kind, &prepared.value)?;
 
             if let Some((_, created_at)) = live {
@@ -199,13 +203,27 @@ impl VaultStore {
                     now,
                     AuditAction::Rotated,
                     actor.user,
-                    SecretId::from_uuid(id),
+                    secret_id,
                     kind.as_str(),
+                )
+                .await?;
+                append_secret_event(
+                    &mut tx,
+                    now,
+                    &actor,
+                    SecretEventType::Updated,
+                    SecretEventData::new(
+                        secret_id.as_uuid().to_string(),
+                        kind.as_str(),
+                        prepared.label.as_str(),
+                        last_four.as_str(),
+                        None,
+                    ),
                 )
                 .await?;
                 tx.commit().await?;
                 return Ok(PutOutcome::Replaced(SecretMetadata {
-                    id: SecretId::from_uuid(id),
+                    id: secret_id,
                     kind,
                     label: prepared.label,
                     last_four,
@@ -242,13 +260,27 @@ impl VaultStore {
                 now,
                 AuditAction::Created,
                 actor.user,
-                SecretId::from_uuid(id),
+                secret_id,
                 kind.as_str(),
+            )
+            .await?;
+            append_secret_event(
+                &mut tx,
+                now,
+                &actor,
+                SecretEventType::Created,
+                SecretEventData::new(
+                    secret_id.as_uuid().to_string(),
+                    kind.as_str(),
+                    prepared.label.as_str(),
+                    last_four.as_str(),
+                    None,
+                ),
             )
             .await?;
             tx.commit().await?;
             return Ok(PutOutcome::Created(SecretMetadata {
-                id: SecretId::from_uuid(id),
+                id: secret_id,
                 kind,
                 label: prepared.label,
                 last_four,
@@ -322,6 +354,20 @@ impl VaultStore {
 
         replace_value(&mut tx, id.as_uuid(), &prepared, &sealed, now).await?;
         append_audit(&mut tx, now, AuditAction::Rotated, actor.user, id, kind.as_str()).await?;
+        append_secret_event(
+            &mut tx,
+            now,
+            &actor,
+            SecretEventType::Rotated,
+            SecretEventData::new(
+                id.as_uuid().to_string(),
+                kind.as_str(),
+                prepared.label.as_str(),
+                last_four.as_str(),
+                None,
+            ),
+        )
+        .await?;
         tx.commit().await?;
 
         Ok(SecretMetadata {
@@ -345,21 +391,29 @@ impl VaultStore {
         settings_only(&actor)?;
         let now = self.now();
         let mut tx = self.pool.begin(actor.tenant).await?;
-        let revoked: Option<Uuid> = sqlx::query_scalar(
+        let revoked: Option<(String, String, String)> = sqlx::query_as(
             "UPDATE vault.secrets \
                 SET ciphertext = NULL, value_nonce = NULL, wrapped_dek = NULL, dek_nonce = NULL, \
                     key_version = NULL, revoked_at = $2, revoked_by = $3, updated_at = $2 \
               WHERE id = $1 AND revoked_at IS NULL \
-              RETURNING id",
+              RETURNING kind, label, last_four",
         )
         .bind(id.as_uuid())
         .bind(now)
         .bind(actor.user.as_uuid())
         .fetch_optional(tx.conn())
         .await?;
-        if revoked.is_some() {
-            let kind = live_kind(&mut tx, id).await?;
+        if let Some((kind, label, last_four)) = revoked {
+            let kind = parse_kind(&kind)?;
             append_audit(&mut tx, now, AuditAction::Revoked, actor.user, id, kind.as_str()).await?;
+            append_secret_event(
+                &mut tx,
+                now,
+                &actor,
+                SecretEventType::Revoked,
+                SecretEventData::new(id.as_uuid().to_string(), kind.as_str(), label, last_four, None),
+            )
+            .await?;
         } else if !exists(&mut tx, id).await? {
             return Err(StoreError::NotFound);
         }
@@ -429,21 +483,22 @@ impl VaultStore {
         settings_only(&actor)?;
         let now = self.now();
         let mut tx = self.pool.begin(actor.tenant).await?;
-        let updated: Option<Uuid> = sqlx::query_scalar(
+        let updated: Option<(String, String, String)> = sqlx::query_as(
             "UPDATE vault.secrets SET last_tested_at = $2 \
-              WHERE id = $1 AND revoked_at IS NULL RETURNING id",
+              WHERE id = $1 AND revoked_at IS NULL RETURNING kind, label, last_four",
         )
         .bind(id.as_uuid())
         .bind(now)
         .fetch_optional(tx.conn())
         .await?;
-        if updated.is_none() {
+        let Some((kind, label, last_four)) = updated else {
             return Err(if exists(&mut tx, id).await? {
                 StoreError::Revoked
             } else {
                 StoreError::NotFound
             });
-        }
+        };
+        let kind = parse_kind(&kind)?;
         append_audit(
             &mut tx,
             now,
@@ -451,6 +506,24 @@ impl VaultStore {
             actor.user,
             id,
             outcome.detail(),
+        )
+        .await?;
+        let result = match outcome {
+            TestOutcome::Passed => SecretTestResult::Passed,
+            TestOutcome::Failed => SecretTestResult::Failed,
+        };
+        append_secret_event(
+            &mut tx,
+            now,
+            &actor,
+            SecretEventType::Tested,
+            SecretEventData::new(
+                id.as_uuid().to_string(),
+                kind.as_str(),
+                label,
+                last_four,
+                Some(result),
+            ),
         )
         .await?;
         tx.commit().await?;
@@ -561,14 +634,6 @@ async fn exists(tx: &mut TenantTx, id: SecretId) -> Result<bool, StoreError> {
     Ok(found.is_some())
 }
 
-async fn live_kind(tx: &mut TenantTx, id: SecretId) -> Result<SecretKind, StoreError> {
-    let kind: String = sqlx::query_scalar("SELECT kind FROM vault.secrets WHERE id = $1")
-        .bind(id.as_uuid())
-        .fetch_one(tx.conn())
-        .await?;
-    parse_kind(&kind)
-}
-
 #[allow(clippy::too_many_arguments)] // one INSERT; a struct would only rename the arguments
 async fn insert_secret(
     tx: &mut TenantTx,
@@ -638,6 +703,40 @@ async fn replace_value(
             "the secret changed while its value was being replaced".into(),
         ));
     }
+    Ok(())
+}
+
+/// Append one event for other services in the same transaction as the state change and its audit
+/// entry. The payload is metadata only: no value, no provider response.
+async fn append_secret_event(
+    tx: &mut TenantTx,
+    at: OffsetDateTime,
+    actor: &Actor,
+    event_type: SecretEventType,
+    data: SecretEventData,
+) -> Result<(), StoreError> {
+    let id = EventId::new();
+    let event = SecretEvent::new(
+        id.to_string(),
+        format!("tn_{}", actor.tenant.to_hex32()),
+        format!("us_{}", actor.user.as_uuid().simple()),
+        at,
+        event_type,
+        data,
+    );
+    let payload = serde_json::to_value(&event)
+        .map_err(|e| StoreError::Internal(format!("an outbox event would not serialise: {e}")))?;
+    outbox::append(
+        tx.conn(),
+        &outbox::Event {
+            id,
+            tenant: actor.tenant,
+            event_type: event_type.as_str().to_owned(),
+            occurred_at: at,
+            payload,
+        },
+    )
+    .await?;
     Ok(())
 }
 

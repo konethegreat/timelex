@@ -20,7 +20,7 @@ pub mod testing;
 
 /// The admin-side SQL files, in the order they must run. Embedded in the binary at build time so a
 /// deployment cannot run them out of order or from the wrong version.
-pub const BOOTSTRAP_FILES: [(&str, &str); 3] = [
+pub const BOOTSTRAP_FILES: [(&str, &str); 4] = [
     (
         "001_roles_and_schemas.sql",
         include_str!("../../../deploy/postgres/bootstrap/001_roles_and_schemas.sql"),
@@ -30,8 +30,12 @@ pub const BOOTSTRAP_FILES: [(&str, &str); 3] = [
         include_str!("../../../deploy/postgres/bootstrap/002_tenancy.sql"),
     ),
     (
-        "003_provision_services.sql",
-        include_str!("../../../deploy/postgres/bootstrap/003_provision_services.sql"),
+        "003_outbox.sql",
+        include_str!("../../../deploy/postgres/bootstrap/003_outbox.sql"),
+    ),
+    (
+        "004_provision_services.sql",
+        include_str!("../../../deploy/postgres/bootstrap/004_provision_services.sql"),
     ),
 ];
 

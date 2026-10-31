@@ -32,7 +32,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 |---|---|---|---|---|---|
 | [`gateway`](../services/gateway) | Rust | Edge: authN (API keys, OIDC), tenant resolution, rate limits and metering, routing, outward MCP aggregation, OpenAPI aggregation | none (config only) | 1 | ✅ authN, routing to identity, per-firm limits and metering, header-based `tools/call` routing; MCP aggregation and OIDC pending |
 | [`identity`](../services/identity) | Rust | Tenants, users, roles, API keys, SSO settings | `identity` | 1 | ✅ library (create firm, issue/revoke key, authenticate) |
-| [`vault`](../services/vault) | Rust | BYO keys and OAuth tokens: envelope encryption, write-only API, spend caps, audit | `vault` | 1 | ✅ v0 (`vault.v1.yaml`, routed by the gateway since 0.4.0): sealed schema, envelope encryption, write-only REST API, Anthropic key check, per-firm audit chain. Lease, MCP and KMS/WIF later |
+| [`vault`](../services/vault) | Rust | BYO keys and OAuth tokens: envelope encryption, write-only API, spend caps, audit | `vault` | 1 | ✅ v0 (`vault.v1.yaml`, routed by the gateway since 0.4.0): sealed schema, envelope encryption, write-only REST API, Anthropic key check, per-firm audit chain, `secret.*` events through the outbox. Lease, MCP and KMS/WIF later |
 | [`mcp-host`](../services/mcp-host) | Rust | Agent runtime: MCP clients, model loop, workflows, budgets, escalation, audit | `host` | 1–4 | 🟡 |
 | [`capture-hub`](../services/capture-hub) | Rust | Connectors (Microsoft Graph, Google), webhook receipt, subscription renewal, normalisation to activity events | `capture` | 2 | 🟡 |
 | [`desktop-agent`](../services/desktop-agent) | Rust | Windows agent: foreground window/document, idle time, local privacy filter, pause, signed updates | local only | 2 | 🟡 |
@@ -65,6 +65,9 @@ manual quick-capture ────────┘          │ outbox → bus
                                          ▼
                            billing: WIP → pro-forma ─► ClearCut (maths, VAT, export) ─► certify ─► fee note
 ```
+
+## Events and the outbox
+A service writes the event envelope into `platform.outbox` in the same transaction as the state change it describes. A relay claims undelivered rows, publishes them at least once, and marks them; consumers dedupe on the envelope id, so a redelivery has one effect. `secret.*` is the first family. Envelopes are JSON Schema contracts mirrored by `timelex-types`, and never carry secret values. See [ADR-0014](adr/0014-transactional-outbox.md); the broker path is [ADR-0010](adr/0010-messaging-and-sync-contracts.md).
 
 ## Contracts
 | Location | Purpose | Enforced by |

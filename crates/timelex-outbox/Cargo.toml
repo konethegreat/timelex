@@ -1,0 +1,27 @@
+[package]
+name = "timelex-outbox"
+description = "Transactional outbox for TimeLex: append an event in the writer's transaction and relay it at least once (P1-06, ADR-0014)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = "0.1"
+serde_json = "1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "json", "macros"] }
+time = "0.3"
+timelex-identity = { path = "../timelex-identity" }
+tokio = { version = "1", features = ["time"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+serde_json = "1"
+sqlx = { version = "0.9", default-features = false, features = ["macros", "migrate"] }
+timelex-db = { path = "../timelex-db", features = ["testing"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
