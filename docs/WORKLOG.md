@@ -4,6 +4,25 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-10-31 (latest): gateway routes the vault — contract 0.4.0
+**Trigger:** P1-05 increment 3 merged as `09f33bb` (#21), and the dependabot queue was cleared; the vault had no caller yet.
+
+**Done**
+- [`contracts/openapi/gateway.v1.yaml`](../contracts/openapi/gateway.v1.yaml) 0.4.0: `GET /v1/secrets` (optional `includeRevoked`), `PUT /v1/secrets/{kind}`, `DELETE /v1/secrets/{id}`, `POST /v1/secrets/{id}/test`, `POST /v1/secrets/{id}/rotate`, each requiring a tenant API key and referring to the vault contract's schemas. 409 and 422 pass through; 401 and 5xx are still hidden by the gateway.
+- [`services/gateway/src/proxy.rs`](../services/gateway/src/proxy.rs): a `Target` describes each REST route (label, service, method, canonical path, the 400 detail when it has no path). `internal_token` now takes the audience, and `forward` takes the service and method, so the same `handle` serves identity and the vault. Tokens for secrets are minted for `vault`.
+- Validation before forwarding: the four kinds against a fixed list, ids by parsing and re-formatting as UUIDs, and the list query accepted only as absent, `includeRevoked=true` or `includeRevoked=false`. A bad parameter is a 400 *after* authentication and rate limiting, and nothing reaches the vault.
+- [`services/gateway/tests/routing.rs`](../services/gateway/tests/routing.rs): 3 stub tests (forwarding, audience and body; canonical paths, query and 400s; an unconfigured vault is 502). [`services/gateway/tests/e2e.rs`](../services/gateway/tests/e2e.rs): a real vault service with its own schema, role and migrations in the same throwaway database, 3 tests (store/list/test/rotate/revoke with a `settings:manage` refusal, cross-firm invisibility, and the vault refusing tenant keys, forged tokens and operator tokens). 27 routing and 9 end-to-end tests pass.
+
+**Decisions and why**
+- **PUT and DELETE share `/v1/secrets/{key}`**, as the vault's router does: axum will not register one segment under two parameter names, and the wire paths stay exactly the vault contract's.
+- **The gateway validates kinds and ids itself.** It has no business rules otherwise, but these two decide a URL, and forwarding a client's raw text would let `..%2f` tricks and unknown kinds reach the vault. Canonical re-formatting keeps every forwarded URL one the contract describes.
+- **One query parameter, positively allowed.** `includeRevoked` is the only query the route has; anything else is refused rather than dropped, so a caller cannot believe a filter was applied when it was not.
+- **A vault with no configured URL is 502**, not 501: the route exists, the service behind it is unreachable, and the contract already says 502 for that.
+- **The permission stays the vault's.** The gateway forwards the principal's permissions and the vault enforces `settings:manage` in the store, so a new route cannot forget the check.
+- **Test values are built at run time** (`sk-ant-api03-<uuid>`), and the end-to-end test builds the vault master key from two UUIDs, so no credential-shaped literal enters the repository.
+
+**Next:** P1-06 outbox and relay, starting with `secret.*` events; then P1-15 MCP tools for the vault and P1-13 `mcp-host`.
+
 ## 2026-10-30 (latest): P1-05 vault v0 finished — HTTP API and the Anthropic check
 **Trigger:** increment 2 merged as `8ef8214` (#20); the last part is the service the gateway and the admin UI will talk to.
 

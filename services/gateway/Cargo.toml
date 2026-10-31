@@ -25,8 +25,11 @@ timelex-auth = { path = "../../crates/timelex-auth" }
 timelex-identity = { path = "../../crates/timelex-identity" }
 
 [dev-dependencies]
+async-trait = "0.1"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
 timelex-identity-service = { path = "../identity" }
+timelex-vault = { path = "../../crates/timelex-vault" }
+timelex-vault-service = { path = "../vault" }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }

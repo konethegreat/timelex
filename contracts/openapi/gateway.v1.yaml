@@ -1,17 +1,19 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (draft 0.3.0). Contract-first: this file leads the code (ADR-0001).
-# Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml.
+# Gateway contract v1 (draft 0.4.0). Contract-first: this file leads the code (ADR-0001).
+# Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml, vault.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.3.0
+  version: 0.4.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
     Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway authenticates callers and
     routes three identity operations (`createTenant`, `issueApiKey`, `revokeApiKey`). Since 0.3.0 it
     also enforces per-firm request limits, records usage metadata and routes MCP `tools/call` requests
-    by header. Everything else arrives with its service. Every capability is also exposed as MCP
-    tools; see `contracts/mcp/tools.md`.
+    by header. Since 0.4.0 it routes the five vault secrets operations, so a firm's admin can store,
+    list, test, rotate and revoke provider keys without reaching the vault directly. Everything else
+    arrives with its service. Every capability is also exposed as MCP tools; see
+    `contracts/mcp/tools.md`.
 
     **Authentication.** Tenant calls carry `Authorization: Bearer tlx_...` (an API key from
     `issueApiKey` or `createTenant`). The gateway checks the key with the identity service on **every**
@@ -150,6 +152,161 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/secrets:
+    get:
+      operationId: listSecrets
+      summary: List the firm's provider secrets as metadata
+      description: Routed to the vault. Requires `settings:manage`. Same response as `vault.v1.yaml` `listSecrets`; values are never returned.
+      parameters:
+        - name: includeRevoked
+          in: query
+          required: false
+          description: Include secrets that have been revoked.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: The firm's secrets.
+          content:
+            application/json:
+              schema: { $ref: "vault.v1.yaml#/components/schemas/SecretList" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/secrets/{key}:
+    put:
+      operationId: putSecret
+      summary: Create or replace the firm's secret of one kind
+      description: |
+        Routed to the vault. Requires `settings:manage`. Same request and response as `vault.v1.yaml`
+        `putSecret`: an upsert that returns 201 for a new secret and 200 when a live one of that kind was
+        replaced. `allowedHosts` may narrow the kind's default hosts but never widen them.
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The provider family of the secret.
+          schema: { $ref: "vault.v1.yaml#/components/schemas/SecretKind" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "vault.v1.yaml#/components/schemas/PutSecretRequest" }
+      responses:
+        "200":
+          description: The existing secret of that kind was replaced. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "vault.v1.yaml#/components/schemas/SecretMetadata" }
+        "201":
+          description: A new secret was stored. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "vault.v1.yaml#/components/schemas/SecretMetadata" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+    delete:
+      operationId: revokeSecret
+      summary: Revoke a secret
+      description: Routed to the vault. Requires `settings:manage`. Revoking an already-revoked secret is a 204 (idempotent).
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The secret's id, as returned in its metadata.
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: "Revoked, or already revoked." }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/secrets/{id}/test:
+    post:
+      operationId: testSecret
+      summary: Check that a stored secret still works
+      description: |
+        Routed to the vault. Requires `settings:manage`. The vault asks the secret's provider whether
+        the credential is accepted; the value is decrypted in memory for the call and never leaves the
+        vault. Testing sets `lastTestedAt`, not `lastUsedAt`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret's id, as returned in its metadata.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The provider accepted the secret.
+          content:
+            application/json:
+              schema: { $ref: "vault.v1.yaml#/components/schemas/TestResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The secret has been revoked and cannot be tested.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: The provider rejected the secret. `detail` says so; the provider's own message is not relayed.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502":
+          description: The vault could not be reached, or the provider could not be reached or answered in a way that says nothing about the secret.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/secrets/{id}/rotate:
+    post:
+      operationId: rotateSecret
+      summary: Replace a secret's value under the same id
+      description: Routed to the vault. Requires `settings:manage`. Keeps the id, label and allowed hosts; replaces the value.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The secret's id, as returned in its metadata.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "vault.v1.yaml#/components/schemas/RotateRequest" }
+      responses:
+        "200":
+          description: The secret was rotated. Metadata only.
+          content:
+            application/json:
+              schema: { $ref: "vault.v1.yaml#/components/schemas/SecretMetadata" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The secret has been revoked and cannot be rotated.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413": { $ref: "#/components/responses/TooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }

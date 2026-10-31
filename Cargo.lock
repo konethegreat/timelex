@@ -3008,6 +3008,7 @@ dependencies = [
 name = "timelex-gateway"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "http-body-util",
  "reqwest",
@@ -3021,6 +3022,8 @@ dependencies = [
  "timelex-identity",
  "timelex-identity-service",
  "timelex-types",
+ "timelex-vault",
+ "timelex-vault-service",
  "tokio",
  "tower",
  "uuid",

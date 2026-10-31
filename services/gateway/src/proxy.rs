@@ -15,7 +15,7 @@ use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
@@ -85,6 +85,12 @@ pub fn routes(state: GatewayState) -> Router {
         .route("/v1/tenants", post(create_tenant))
         .route("/v1/api-keys", post(issue_api_key))
         .route("/v1/api-keys/{key_id}/revoke", post(revoke_api_key))
+        // A kind names PUT's target and an id names DELETE's, but they share one path segment. Axum
+        // will not register the same segment under two parameter names, so each handler interprets it.
+        .route("/v1/secrets", get(list_secrets))
+        .route("/v1/secrets/{key}", put(put_secret).delete(revoke_secret))
+        .route("/v1/secrets/{id}/test", post(test_secret))
+        .route("/v1/secrets/{id}/rotate", post(rotate_secret))
         .route("/mcp", post(mcp))
         .with_state(state)
 }
@@ -294,8 +300,13 @@ impl GatewayState {
         self.authenticate(presented).await
     }
 
-    /// Identify the caller and mint the internal token to forward to identity with.
-    async fn internal_token(&self, who: Who, headers: &HeaderMap) -> Result<(Caller, String), Reject> {
+    /// Identify the caller and mint the internal token to forward to `audience` with.
+    async fn internal_token(
+        &self,
+        audience: &str,
+        who: Who,
+        headers: &HeaderMap,
+    ) -> Result<(Caller, String), Reject> {
         let caller = match who {
             Who::Operator => {
                 let presented = bearer(headers).ok_or(Reject::Unauthorized)?;
@@ -310,20 +321,26 @@ impl GatewayState {
             .0
             .config
             .signer
-            .sign("identity", &caller)
+            .sign(audience, &caller)
             .map_err(|_| Reject::Internal)?;
         Ok((caller, token))
     }
 
-    /// Send a fresh request to identity and relay the answer, with the size of the answer.
+    /// Send a fresh request to a service and relay the answer, with the size of the answer.
     async fn forward(
         &self,
+        service: &str,
+        method: Method,
         path: &str,
         token: String,
         body: Option<Bytes>,
     ) -> Result<(Response, u64), Reject> {
-        let base = self.0.config.service_url("identity").ok_or(Reject::Internal)?;
-        let mut request = self.0.http.post(format!("{base}{path}")).bearer_auth(token);
+        let base = self.0.config.service_url(service).ok_or(Reject::BadGateway)?;
+        let mut request = self
+            .0
+            .http
+            .request(method, format!("{base}{path}"))
+            .bearer_auth(token);
         if let Some(b) = body.filter(|b| !b.is_empty()) {
             request = request.header(header::CONTENT_TYPE, "application/json").body(b);
         }
@@ -441,21 +458,29 @@ impl Trip {
     }
 }
 
-/// Authenticate, check the budget, then read the (size-limited) body and forward. Authentication comes
-/// first so an unauthenticated caller learns nothing about limits or routes; the budget comes before
-/// the body so a firm at its limit does not make the gateway read anything.
-///
-/// `path` is `None` when the route's parameter is malformed: the caller is authenticated first (so the
-/// answer never depends on who is asking) and then gets a 400.
-async fn handle(
-    state: GatewayState,
-    who: Who,
+/// One REST route: where it goes and how it is metered. A `path` of `None` means the caller's
+/// parameter was malformed: the caller is still authenticated and rate-limited first, then gets a 400
+/// naming `invalid`, so the answer never depends on who is asking.
+struct Target {
     label: &'static str,
+    service: &'static str,
+    method: Method,
     path: Option<String>,
-    req: Request,
-) -> Response {
-    let trip = Trip::new(label, req.method().clone());
-    let (caller, token) = match state.internal_token(who, req.headers()).await {
+    invalid: &'static str,
+}
+
+/// The canonical hyphenated form of a UUID path segment, or `None` if it is not a UUID.
+fn uuid_segment(raw: &str) -> Option<String> {
+    Uuid::parse_str(raw).ok().map(|id| id.hyphenated().to_string())
+}
+
+/// Authenticate, check the budget, then read the (size-limited) body and forward to the route's
+/// service. Authentication comes first so an unauthenticated caller learns nothing about limits or
+/// routes; the budget comes before the body so a firm at its limit does not make the gateway read
+/// anything.
+async fn handle(state: GatewayState, who: Who, target: Target, req: Request) -> Response {
+    let trip = Trip::new(target.label, req.method().clone());
+    let (caller, token) = match state.internal_token(target.service, who, req.headers()).await {
         Ok(identified) => identified,
         Err(reject) => {
             let response = reject.into_response();
@@ -478,9 +503,18 @@ async fn handle(
         trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, true);
         return response;
     }
-    let Some(path) = path else {
-        let response = Reject::Invalid("keyId is not a UUID").into_response();
-        trip.done(&state, Some(&caller), None, None, response.status(), 0, 0, false);
+    let Some(path) = target.path else {
+        let response = Reject::Invalid(target.invalid).into_response();
+        trip.done(
+            &state,
+            Some(&caller),
+            Some(target.service),
+            None,
+            response.status(),
+            0,
+            0,
+            false,
+        );
         return response;
     };
     let body = match to_bytes(req.into_body(), MAX_BODY_BYTES).await {
@@ -491,7 +525,7 @@ async fn handle(
             trip.done(
                 &state,
                 Some(&caller),
-                Some("identity"),
+                Some(target.service),
                 None,
                 response.status(),
                 MAX_BODY_BYTES as u64 + 1,
@@ -502,12 +536,15 @@ async fn handle(
         }
     };
     let bytes_in = body.len() as u64;
-    match state.forward(&path, token, Some(body)).await {
+    match state
+        .forward(target.service, target.method, &path, token, Some(body))
+        .await
+    {
         Ok((response, bytes_out)) => {
             trip.done(
                 &state,
                 Some(&caller),
-                Some("identity"),
+                Some(target.service),
                 None,
                 response.status(),
                 bytes_in,
@@ -521,7 +558,7 @@ async fn handle(
             trip.done(
                 &state,
                 Some(&caller),
-                Some("identity"),
+                Some(target.service),
                 None,
                 response.status(),
                 bytes_in,
@@ -537,23 +574,150 @@ async fn create_tenant(State(s): State<GatewayState>, req: Request) -> Response 
     handle(
         s,
         Who::Operator,
-        "tenants.create",
-        Some("/v1/tenants".into()),
+        Target {
+            label: "tenants.create",
+            service: "identity",
+            method: Method::POST,
+            path: Some("/v1/tenants".into()),
+            invalid: "the request is not valid",
+        },
         req,
     )
     .await
 }
 
 async fn issue_api_key(State(s): State<GatewayState>, req: Request) -> Response {
-    handle(s, Who::Tenant, "apiKeys.issue", Some("/v1/api-keys".into()), req).await
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "apiKeys.issue",
+            service: "identity",
+            method: Method::POST,
+            path: Some("/v1/api-keys".into()),
+            invalid: "the request is not valid",
+        },
+        req,
+    )
+    .await
 }
 
 async fn revoke_api_key(State(s): State<GatewayState>, Path(key_id): Path<String>, req: Request) -> Response {
     // Re-format the id ourselves: only a canonical UUID ever reaches the service's URL.
-    let path = Uuid::parse_str(&key_id)
-        .ok()
-        .map(|key| format!("/v1/api-keys/{}/revoke", key.hyphenated()));
-    handle(s, Who::Tenant, "apiKeys.revoke", path, req).await
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "apiKeys.revoke",
+            service: "identity",
+            method: Method::POST,
+            path: uuid_segment(&key_id).map(|id| format!("/v1/api-keys/{id}/revoke")),
+            invalid: "keyId is not a UUID",
+        },
+        req,
+    )
+    .await
+}
+
+// ---------- vault ----------
+
+/// The kinds the vault contract defines. Anything else never reaches the vault's URL.
+const SECRET_KINDS: [&str; 4] = [
+    "anthropic_api_key",
+    "m365_oauth",
+    "google_oauth",
+    "generic_api_key",
+];
+
+async fn list_secrets(State(s): State<GatewayState>, req: Request) -> Response {
+    // The only query this route has. It is accepted only in its canonical form, so nothing else a
+    // client sends travels on.
+    let path = match req.uri().query() {
+        None | Some("") => Some("/v1/secrets".to_owned()),
+        Some("includeRevoked=true") => Some("/v1/secrets?includeRevoked=true".to_owned()),
+        Some("includeRevoked=false") => Some("/v1/secrets?includeRevoked=false".to_owned()),
+        Some(_) => None,
+    };
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "secrets.list",
+            service: "vault",
+            method: Method::GET,
+            path,
+            invalid: "the query is not valid for this operation",
+        },
+        req,
+    )
+    .await
+}
+
+async fn put_secret(State(s): State<GatewayState>, Path(key): Path<String>, req: Request) -> Response {
+    let path = SECRET_KINDS
+        .contains(&key.as_str())
+        .then(|| format!("/v1/secrets/{key}"));
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "secrets.put",
+            service: "vault",
+            method: Method::PUT,
+            path,
+            invalid: "kind is not a known secret kind",
+        },
+        req,
+    )
+    .await
+}
+
+async fn revoke_secret(State(s): State<GatewayState>, Path(key): Path<String>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "secrets.revoke",
+            service: "vault",
+            method: Method::DELETE,
+            path: uuid_segment(&key).map(|id| format!("/v1/secrets/{id}")),
+            invalid: "id is not a UUID",
+        },
+        req,
+    )
+    .await
+}
+
+async fn test_secret(State(s): State<GatewayState>, Path(id): Path<String>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "secrets.test",
+            service: "vault",
+            method: Method::POST,
+            path: uuid_segment(&id).map(|id| format!("/v1/secrets/{id}/test")),
+            invalid: "id is not a UUID",
+        },
+        req,
+    )
+    .await
+}
+
+async fn rotate_secret(State(s): State<GatewayState>, Path(id): Path<String>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "secrets.rotate",
+            service: "vault",
+            method: Method::POST,
+            path: uuid_segment(&id).map(|id| format!("/v1/secrets/{id}/rotate")),
+            invalid: "id is not a UUID",
+        },
+        req,
+    )
+    .await
 }
 
 // ---------- MCP ----------

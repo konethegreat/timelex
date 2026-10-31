@@ -209,6 +209,11 @@ async fn post_as(app: &Router, path: &str, token: &str, body: Option<&str>) -> R
     .await
 }
 
+async fn send_as(app: &Router, method: Method, path: &str, token: &str, body: Option<&str>) -> Reply {
+    let b = bearer(token);
+    call(app, method, path, &[("authorization", b[0].1.as_str())], body).await
+}
+
 // ---------- open routes ----------
 
 #[tokio::test]
@@ -419,6 +424,183 @@ async fn revoke_forwards_a_canonical_path_and_refuses_bad_ids_after_authenticati
     // An unauthenticated caller sending a bad id still just gets the 401.
     let r = call(&gw.app, Method::POST, "/v1/api-keys/not-a-uuid/revoke", &[], None).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+// ---------- vault routes ----------
+
+/// Identity and a vault sharing one stub: authenticate answers the principal, DELETE is a 204 like
+/// the vault's revoke, everything else is a 2xx with a body.
+fn vault_happy(s: &Seen) -> (StatusCode, String, Duration) {
+    match (s.method.as_str(), s.path.as_str()) {
+        ("POST", "/v1/authenticate") => (StatusCode::OK, principal_reply(), Duration::ZERO),
+        ("DELETE", _) => (StatusCode::NO_CONTENT, String::new(), Duration::ZERO),
+        _ => (StatusCode::OK, json!({"ok": true}).to_string(), Duration::ZERO),
+    }
+}
+
+fn gateway_with_vault(url: &str) -> Gw {
+    gateway_services(
+        &[("identity", url.to_owned()), ("vault", url.to_owned())],
+        Duration::from_secs(2),
+        600,
+        120,
+    )
+}
+
+#[tokio::test]
+async fn a_secret_call_is_authenticated_then_forwarded_to_the_vault_with_the_vault_audience() {
+    let s = stub(vault_happy).await;
+    let gw = gateway_with_vault(&format!("http://{}", s.addr));
+    let body = json!({"value": "not-a-real-value", "label": "billing workspace"}).to_string();
+    let r = send_as(
+        &gw.app,
+        Method::PUT,
+        "/v1/secrets/anthropic_api_key",
+        TENANT_KEY.as_str(),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        r.text,
+        json!({"ok": true}).to_string(),
+        "the vault's answer is relayed"
+    );
+
+    let calls = s.calls();
+    assert_eq!(calls.len(), 2, "one authenticate, one forward");
+    assert_eq!(
+        (calls[0].method.as_str(), calls[0].path.as_str()),
+        ("POST", "/v1/authenticate")
+    );
+    let fwd = &calls[1];
+    assert_eq!(
+        (fwd.method.as_str(), fwd.path.as_str()),
+        ("PUT", "/v1/secrets/anthropic_api_key"),
+        "the method and path are the vault contract's"
+    );
+    assert_eq!(fwd.body, body);
+
+    // The token names the vault. A verifier for any other audience would refuse it, so success here
+    // is what proves the audience.
+    let verified = gw
+        .verifier("vault")
+        .verify(
+            fwd.header("authorization")
+                .unwrap()
+                .strip_prefix("Bearer ")
+                .unwrap(),
+        )
+        .unwrap();
+    match verified.caller {
+        Caller::Principal(p) => {
+            assert_eq!(p.tenant.as_uuid(), Uuid::from_u128(11));
+            assert_eq!(p.user.as_uuid(), Uuid::from_u128(22));
+        }
+        other => panic!("expected a principal, got {other:?}"),
+    }
+
+    // The call is metered against the firm like any other.
+    let usage = call(&gw.internal, Method::GET, "/internal/usage", &[], None).await;
+    let usage: Value = serde_json::from_str(&usage.text).unwrap();
+    assert_eq!(usage["tenants"][Uuid::from_u128(11).to_string()]["requests"], 1);
+}
+
+#[tokio::test]
+async fn secret_paths_are_canonicalised_and_bad_parameters_are_refused_after_authenticating() {
+    let s = stub(vault_happy).await;
+    let gw = gateway_with_vault(&format!("http://{}", s.addr));
+    let key = TENANT_KEY.as_str();
+
+    // A UUID reaches the vault in canonical form, whatever case the client used.
+    let id = Uuid::new_v4();
+    let upper = id.to_string().to_uppercase();
+    let r = send_as(
+        &gw.app,
+        Method::DELETE,
+        &format!("/v1/secrets/{upper}"),
+        key,
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(s.calls().last().unwrap().path, format!("/v1/secrets/{id}"));
+
+    let r = post_as(
+        &gw.app,
+        &format!("/v1/secrets/{upper}/rotate"),
+        key,
+        Some(&json!({"value": "next"}).to_string()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(s.calls().last().unwrap().path, format!("/v1/secrets/{id}/rotate"));
+
+    // The list query is forwarded only in its canonical form.
+    let b = bearer(key);
+    let auth = [("authorization", b[0].1.as_str())];
+    let r = call(
+        &gw.app,
+        Method::GET,
+        "/v1/secrets?includeRevoked=true",
+        &auth,
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(s.calls().last().unwrap().path, "/v1/secrets?includeRevoked=true");
+    let before = s.calls().len();
+    let r = call(
+        &gw.app,
+        Method::GET,
+        "/v1/secrets?tenantId=someone-else",
+        &auth,
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert_eq!(s.calls().len(), before + 1, "authenticated, then refused");
+
+    // A kind the vault does not define, and ids that are not UUIDs, never reach it.
+    for (method, path, body) in [
+        (Method::PUT, "/v1/secrets/admin_key", Some("{}")),
+        (Method::DELETE, "/v1/secrets/not-a-uuid", None),
+        (Method::POST, "/v1/secrets/not-a-uuid/test", None),
+    ] {
+        let before = s.calls().len();
+        let r = send_as(&gw.app, method, path, key, body).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{path}");
+        assert_eq!(s.calls().len(), before + 1, "{path}: only authenticate");
+    }
+
+    // Unauthenticated callers get the 401 before any parameter is looked at.
+    let r = call(&gw.app, Method::POST, "/v1/secrets/not-a-uuid/test", &[], None).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_secret_call_with_no_vault_configured_is_a_502_and_nothing_is_forwarded() {
+    let s = stub(vault_happy).await;
+    let gw = gateway_services(
+        &[("identity", format!("http://{}", s.addr))],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let r = send_as(
+        &gw.app,
+        Method::PUT,
+        "/v1/secrets/anthropic_api_key",
+        TENANT_KEY.as_str(),
+        Some(&json!({"value": "not-a-real-value"}).to_string()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        s.calls().len(),
+        1,
+        "authenticated, and no call reached a service route"
+    );
 }
 
 // ---------- operator route ----------
