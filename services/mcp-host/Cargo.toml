@@ -1,0 +1,26 @@
+# Written by Kone Tshivhinda & Claude
+[package]
+name = "timelex-mcp-host"
+description = "TimeLex agent runtime: the model loop, its Rand budget and the escalation ladder (P1-13)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+timelex-vault = { path = "../../crates/timelex-vault" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+axum = "0.8"
+uuid = { version = "1", features = ["v4"] }

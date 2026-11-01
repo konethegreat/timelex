@@ -4,7 +4,30 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-11 new-service generator — the frame arrives with the service
+## 2026-11-01 (latest): P1-13 increment 1 — the model loop, and a Rand cap that really stops
+
+**Trigger:** `mcp-host` is the only Phase 1 component with no code, and it is where a firm's own Anthropic money is spent. Before any workflow can run, the loop needs a provider boundary, exact cost accounting and a ladder that cannot spend past its authorization.
+
+**Done**
+- [`services/mcp-host`](../services/mcp-host) is a new workspace library ([ADR-0018](adr/0018-model-loop-money-and-failure-rules.md)). `ModelProvider` has four errors chosen for the next action: `ModelUnavailable` (next rung), `KeyRejected` (stop; all rungs share the key), `Unreachable` (stop; a rate limit is not fixed by a smaller model) and `Unusable` (stop).
+- `AnthropicProvider` sends one `POST /v1/messages` with the leased key in `x-api-key` only. It maps `401` to a key failure, `400`/`403`/`404` to model-unavailable, and `408`/`429`/`5xx`/transport to unreachable. Provider messages, bodies and status codes never enter an error: a test checks that the provider's words do not appear in the error's `Debug` or `Display`.
+- Money is integer micro-rand. `PriceList::published()` holds the research 04 §7 rates at R18/USD (Haiku R1.80/R9, Sonnet R36/R180, Opus R72/R360 per million input/output), with cache reads at 0.1x and writes at 1.25x input. 2 000 input and 400 output tokens cost R0.0072 on Haiku, and a test pins it.
+- The ladder is Haiku → Sonnet → Opus → Fable, where Fable needs both the tenant's 30-day-retention flag and a configured price. With neither, Opus is the top and escalation is `needs_review`.
+- The loop checks the cap before each call and after each reply. A R0.005 cap aborts after a R0.0072 call and never makes the second; a zero cap makes none. `max_steps` is a second ceiling. Every run ends `done` or `needs_review` with a reason (`budget_exceeded`, `escalated_to_human`, `no_model_available`, `key_rejected`, `provider_unreachable`, `unusable_reply`, `step_limit`).
+- Tests: 2 unit, 14 loop tests over a scripted mock provider and 9 adapter tests over a local Axum stub, plus a doctest. No test reaches the real provider.
+- Docs: ADR-0018, INDEX, TASKS (P1-13 now 🟡), ARCHITECTURE, the root README and this service's README.
+
+**Decisions and why**
+- **Integer micro-rand, never floats.** A cap test must be exact; two equal runs cannot differ in the last digits.
+- **Prices are deployment configuration, not tenant data.** A tenant controls its cap, not what a token costs. A stale or malicious price row could make a call free.
+- **No Fable rung without a price.** The tenant flag alone would allow an uncapped call; our research has no Fable rate, so it stays off until one is configured.
+- **The cap stops even an accepted reply once spend is over.** The run has exceeded its authorization; a human decides what to do with the output.
+- **No retries in the adapter.** A retry with its own backoff would spend money the caller's budget cannot see. Backoff goes above, against the same budget.
+- **A library first.** `/v1/workflows` and `/v1/runs` need the workflow shape, which P3-06 owns; inventing the contract now would produce a surface with no users.
+
+**Next:** the vault lease (first caller of `/internal/v1/...`, with audit and contract tests) and a lease-backed key source; then the `rmcp` client probes; then the `host` schema and workflow routes. P1-12 is still branch protection and needs a shared repository setting.
+
+## 2026-11-01: P1-11 new-service generator — the frame arrives with the service
 **Trigger:** identity, vault and gateway each carry the same operational frame by hand: internal-token check, tenant transaction, `/health`, problem-detail errors, telemetry, a schema with RLS and grants, and a workspace member. The copies already differ in details, and Phase 2 adds several services. The fourth copy is the one that forgets a grant or accepts a tenant id from the request.
 
 **Done**
