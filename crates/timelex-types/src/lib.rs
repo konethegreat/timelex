@@ -41,14 +41,14 @@ pub enum ActivityKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
     pub system: SourceSystem,
     pub source_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Actor {
     pub user_id: String,
 }
@@ -64,7 +64,7 @@ pub enum ParticipantRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Participant {
     pub role: ParticipantRole,
     pub domain: String,
@@ -73,7 +73,7 @@ pub struct Participant {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Subject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -86,7 +86,7 @@ pub struct Subject {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct Privacy {
     pub content_captured: bool,
     pub redaction_applied: bool,
@@ -94,7 +94,7 @@ pub struct Privacy {
 
 /// Immutable fact about one observed work signal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityEvent {
     pub schema_version: String,
     pub id: String,
@@ -164,7 +164,7 @@ pub enum SecretTestResult {
 
 /// What the event says about the secret. Never a value: the metadata an admin already sees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct SecretEventData {
     pub secret_id: String,
     pub kind: String,
@@ -194,7 +194,7 @@ impl SecretEventData {
 
 /// Immutable fact about one change to a firm's provider secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct SecretEvent {
     pub schema_version: String,
     pub id: String,
@@ -239,6 +239,7 @@ mod tests {
 
     const SCHEMA: &str = include_str!("../../../contracts/events/activity-event.schema.json");
     const EXAMPLE: &str = include_str!("../../../contracts/examples/activity-event.json");
+    const RELEASED_V1_0: &str = include_str!("../../../contracts/examples/activity-event.v1.0.json");
 
     fn validator() -> jsonschema::Validator {
         let schema: Value = serde_json::from_str(SCHEMA).expect("schema is valid JSON");
@@ -279,14 +280,51 @@ mod tests {
     }
 
     #[test]
-    fn schema_rejects_unknown_field_and_bad_enum() {
-        let mut extra: Value = serde_json::from_str(EXAMPLE).unwrap();
-        extra["surprise"] = Value::Bool(true);
-        assert!(!validator().is_valid(&extra));
-
+    fn schema_rejects_a_bad_enum_value() {
         let mut bad_kind: Value = serde_json::from_str(EXAMPLE).unwrap();
         bad_kind["kind"] = Value::String("teleport".into());
         assert!(!validator().is_valid(&bad_kind));
+    }
+
+    #[test]
+    fn the_released_v1_0_event_stays_valid_and_readable() {
+        let instance: Value = serde_json::from_str(RELEASED_V1_0).unwrap();
+        assert!(
+            validator().is_valid(&instance),
+            "a released 1.0 event must stay valid under the current schema"
+        );
+        let event: ActivityEvent =
+            serde_json::from_str(RELEASED_V1_0).expect("a released 1.0 event must stay readable");
+        assert_eq!(event.schema_version, "1.0");
+        assert_eq!(event.kind, ActivityKind::EmailSent);
+        assert_eq!(event.duration_seconds(), 8 * 60);
+    }
+
+    #[test]
+    fn a_newer_minor_with_unknown_fields_is_readable() {
+        let mut newer: Value = serde_json::from_str(RELEASED_V1_0).unwrap();
+        newer["schemaVersion"] = Value::String("1.1".into());
+        newer["capturedBy"] = Value::String("capture-hub".into());
+        newer["source"]["mailboxRef"] = Value::String("mb_synthetic".into());
+        newer["subject"]["classification"] = Value::String("client".into());
+        newer["subject"]["participants"][0]["displayName"] = Value::String("Fee Earner".into());
+        newer["privacy"]["tier"] = Value::String("metadata".into());
+        assert!(
+            validator().is_valid(&newer),
+            "a newer 1.x event with unknown fields must validate: {newer}"
+        );
+
+        // An older reader keeps the fields it knows and drops the rest without guessing.
+        let event: ActivityEvent = serde_json::from_value(newer).expect("a newer 1.x event must deserialise");
+        assert_eq!(event.schema_version, "1.1");
+        assert_eq!(event.kind, ActivityKind::EmailSent);
+        assert_eq!(event.source.system, SourceSystem::M365Mail);
+        assert_eq!(event.subject.as_ref().unwrap().participants.len(), 2);
+
+        let back = serde_json::to_value(&event).unwrap();
+        assert!(validator().is_valid(&back));
+        assert!(back.get("capturedBy").is_none(), "unknown fields are dropped");
+        assert!(back["source"].get("mailboxRef").is_none());
     }
 
     #[test]
@@ -301,10 +339,10 @@ mod tests {
     }
 
     #[test]
-    fn rust_types_reject_unknown_fields_like_the_schema_does() {
-        let mut extra: Value = serde_json::from_str(EXAMPLE).unwrap();
-        extra["surprise"] = Value::Bool(true);
-        assert!(serde_json::from_value::<ActivityEvent>(extra).is_err());
+    fn rust_types_reject_a_bad_enum_value_like_the_schema_does() {
+        let mut bad_kind: Value = serde_json::from_str(EXAMPLE).unwrap();
+        bad_kind["kind"] = Value::String("teleport".into());
+        assert!(serde_json::from_value::<ActivityEvent>(bad_kind).is_err());
     }
 
     #[test]
@@ -323,6 +361,7 @@ mod secret_tests {
 
     const SCHEMA: &str = include_str!("../../../contracts/events/secret-event.schema.json");
     const EXAMPLE: &str = include_str!("../../../contracts/examples/secret-event.json");
+    const RELEASED_V1_0: &str = include_str!("../../../contracts/examples/secret-event.v1.0.json");
 
     fn validator() -> jsonschema::Validator {
         let schema: Value = serde_json::from_str(SCHEMA).expect("schema is valid JSON");
@@ -368,18 +407,50 @@ mod secret_tests {
     }
 
     #[test]
-    fn schema_rejects_missing_required_field_unknown_field_and_bad_kind() {
+    fn schema_rejects_a_missing_required_field_and_a_bad_kind() {
         let mut missing: Value = serde_json::from_str(EXAMPLE).unwrap();
         missing.as_object_mut().unwrap().remove("tenantId");
         assert!(!validator().is_valid(&missing));
 
-        let mut extra: Value = serde_json::from_str(EXAMPLE).unwrap();
-        extra["surprise"] = Value::Bool(true);
-        assert!(!validator().is_valid(&extra));
-
         let mut bad_kind: Value = serde_json::from_str(EXAMPLE).unwrap();
         bad_kind["data"]["kind"] = Value::String("teleport".into());
         assert!(!validator().is_valid(&bad_kind));
+    }
+
+    #[test]
+    fn the_released_v1_0_event_stays_valid_and_readable() {
+        let instance: Value = serde_json::from_str(RELEASED_V1_0).unwrap();
+        assert!(
+            validator().is_valid(&instance),
+            "a released 1.0 event must stay valid under the current schema"
+        );
+        let event: SecretEvent =
+            serde_json::from_str(RELEASED_V1_0).expect("a released 1.0 event must stay readable");
+        assert_eq!(event.schema_version, "1.0");
+        assert_eq!(event.event_type, SecretEventType::Tested);
+    }
+
+    #[test]
+    fn a_newer_minor_with_unknown_fields_is_readable() {
+        let mut newer: Value = serde_json::from_str(RELEASED_V1_0).unwrap();
+        newer["schemaVersion"] = Value::String("1.1".into());
+        newer["traceId"] = Value::String("synthetic-trace".into());
+        newer["actor"]["service"] = Value::String("vault".into());
+        newer["data"]["rotatedFrom"] = Value::String("synthetic".into());
+        assert!(
+            validator().is_valid(&newer),
+            "a newer 1.x event with unknown fields must validate: {newer}"
+        );
+
+        let event: SecretEvent = serde_json::from_value(newer).expect("a newer 1.x event must deserialise");
+        assert_eq!(event.schema_version, "1.1");
+        assert_eq!(event.event_type, SecretEventType::Tested);
+        assert_eq!(event.data.result, Some(SecretTestResult::Passed));
+
+        let back = serde_json::to_value(&event).unwrap();
+        assert!(validator().is_valid(&back));
+        assert!(back.get("traceId").is_none(), "unknown fields are dropped");
+        assert!(back["data"].get("rotatedFrom").is_none());
     }
 
     #[test]
@@ -395,13 +466,6 @@ mod secret_tests {
         let mut v2: Value = serde_json::from_str(EXAMPLE).unwrap();
         v2["schemaVersion"] = Value::String("2.0".into());
         assert!(!validator().is_valid(&v2));
-    }
-
-    #[test]
-    fn rust_types_reject_unknown_fields_like_the_schema_does() {
-        let mut extra: Value = serde_json::from_str(EXAMPLE).unwrap();
-        extra["surprise"] = Value::Bool(true);
-        assert!(serde_json::from_value::<SecretEvent>(extra).is_err());
     }
 
     #[test]

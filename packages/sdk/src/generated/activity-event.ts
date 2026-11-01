@@ -7,7 +7,7 @@
  */
 export interface ActivityEvent {
   /**
-   * Major version 1. Additive changes bump the minor; breaking changes need a new major.
+   * Major version 1. Optional properties may be added in a minor and readers ignore fields they do not know; required properties, field meanings, types and enum values are fixed within a major. See contracts/events/README.md.
    */
   schemaVersion: string;
   /**
@@ -29,6 +29,7 @@ export interface ActivityEvent {
      * Id of the signal in the originating system.
      */
     sourceId: string;
+    [k: string]: unknown;
   };
   kind:
     | "email_sent"
@@ -42,6 +43,7 @@ export interface ActivityEvent {
     | "manual_entry";
   actor: {
     userId: string;
+    [k: string]: unknown;
   };
   startedAt: string;
   endedAt: string;
@@ -60,7 +62,9 @@ export interface ActivityEvent {
       role: "from" | "to" | "cc" | "attendee" | "organizer";
       domain: string;
       address?: string;
+      [k: string]: unknown;
     }[];
+    [k: string]: unknown;
   };
   /**
    * Object-storage key of redacted content, present only when privacy.contentCaptured is true.
@@ -69,5 +73,7 @@ export interface ActivityEvent {
   privacy: {
     contentCaptured: boolean;
     redactionApplied: boolean;
+    [k: string]: unknown;
   };
+  [k: string]: unknown;
 }

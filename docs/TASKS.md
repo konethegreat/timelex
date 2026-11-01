@@ -67,7 +67,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 ## Phase 2: Capture
 | ID | Task | After | Acceptance | Status |
 |---|---|---|---|---|
-| P2-01 | Activity-event contract v1 (+ versioning rules) | P0-05 | Backward-compat test | ⬜ |
+| P2-01 | Activity-event contract v1 (+ versioning rules) | P0-05 | Backward-compat test | ✅ [`contracts/events/README.md`](../contracts/events/README.md) states the v1 rules: optional additions only, readers ignore unknown fields at every level, and required fields, meanings, types and enum values are fixed within a major. Both event schemas now permit unknown properties, and the Rust types no longer deny them. `timelex-types` (17 tests) validates the frozen 1.0 examples, reads a 1.1 event with unknown fields at the top level and in nested objects, and still rejects a missing required field, a bad enum value and a wrong major. The SDK types are regenerated; the released examples are frozen as `examples/*.v1.0.json` |
 | P2-02 | `capture-hub` framework: connector trait, idempotent ingest, replay | P1-06, P2-01 | Duplicate delivery yields one event | ⬜ |
 | P2-03 | Microsoft 365 mail connector: admin consent, subscriptions, renewal, lifecycle | P2-02, P1-05 | 14 days, zero missed renewals on a test mailbox | ⬜ |
 | P2-04 | Calendar and Teams meetings (attendance; transcripts where permitted) | P2-03 | Meeting durations match Teams reports | ⬜ |
