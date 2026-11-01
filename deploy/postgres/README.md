@@ -14,14 +14,16 @@ One database, one **schema** and one **login role** per service. Two layers of S
 - `timelex_migrator`: owns the service schemas; not a superuser; cannot bypass row-level security.
 - `platform` schema: `current_tenant()`, `apply_tenant_rls()`, `provision_service()`, the view `tables_without_tenant_rls`, and `platform.outbox`.
 - `platform.outbox`: the one queue every service writes events to, in the same transaction as its state change. A relay claims undelivered rows and publishes them at least once; consumers dedupe on the envelope id. The `platform` schema has no tenant policy because the relay must read across firms and no runtime role bypasses row-level security.
-- For each provisioned service (today: `identity`, `vault`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema. It may `INSERT` and `SELECT` the outbox and `UPDATE` only the delivery columns (`published_at`, `attempts`, `next_attempt_at`, `last_error`), so a producer cannot rewrite a payload or an already-published event.
+- For each provisioned service (today: `identity`, `vault`, `capture`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema. It may `INSERT` and `SELECT` the outbox and `UPDATE` only the delivery columns (`published_at`, `attempts`, `next_attempt_at`, `last_error`), so a producer cannot rewrite a payload or an already-published event.
 
 Roles are created `NOLOGIN` and **no file in this repository contains a password**.
 
 ## Local development
-The compose stack applies the four bootstrap files automatically when the `pgdata` volume is first
-created, then runs `dev/005_dev_logins.sql`, which grants the service roles `LOGIN` for the stack's
-trust authentication. That file is local-compose-only; never run it against a shared database.
+The compose stack runs a `bootstrap` container on every `up` that applies the four bootstrap files
+and then `dev/005_dev_logins.sql`, which grants the service roles `LOGIN` for the stack's trust
+authentication. Every file is safe to repeat, so a newly provisioned service reaches an existing
+volume without deleting data. The dev-logins file is local-compose-only; never run it against a
+shared database.
 ```bash
 docker compose -f deploy/docker-compose.yml up -d postgres
 ```
@@ -35,7 +37,8 @@ psql "$ADMIN_URL" -f deploy/postgres/bootstrap/004_provision_services.sql
 psql "$ADMIN_URL" -f deploy/postgres/dev/005_dev_logins.sql   # local trust auth only
 ```
 `timelex_db::bootstrap(&admin_pool)` runs the four bootstrap files for you from Rust. The compose
-stack does not use it: the Postgres image applies them through `docker-entrypoint-initdb.d`.
+stack uses the `bootstrap` container instead, and the image's `docker-entrypoint-initdb.d` also
+applies them when the volume is first created.
 
 ## Tests
 The tenancy and role-isolation tests in `crates/timelex-db` need a **throwaway** Postgres that trusts local connections (so no password exists):

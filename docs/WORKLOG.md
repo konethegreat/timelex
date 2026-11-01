@@ -4,7 +4,33 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P2-01 — event contract v1, and the versioning rules that make it true
+## 2026-11-01 (latest): P2-02 — the capture hub stores each signal once
+
+**Trigger:** every capture source delivers at least once, so the same email, meeting or focus window arrives twice after a retry, a restart or a replay. P2-01 made the event contract immutable and versioned; P2-02 had to make the store refuse the second copy, including across instances and deploys, and give connectors a cursor that cannot skip an event.
+
+**Done**
+- [`crates/timelex-types`](../crates/timelex-types/src/lib.rs) gains the canonical activity-event id: `ae_` plus the first 16 bytes of a length-prefixed SHA-256 over the firm, `source.system`, `source.sourceId` and whole-second `startedAt`, under a `timelex/activity-event/id/v1\0` domain. Kind, actor, subject, capture time and delivery time are outside the rule. `supports_activity_schema_version` accepts every `1.x`. 9 tests, including a golden digest computed independently: changing any of the four facts changes the id; changing anything else does not; a boundary shifted between two fields cannot collide; sub-second precision truncates.
+- The rule is published in [`contracts/events/README.md`](../contracts/events/README.md) and the id description in [`activity-event.schema.json`](../contracts/events/activity-event.schema.json) now points at it.
+- [`services/capture-hub`](../services/capture-hub) becomes a service: migration `capture.activity_events` (primary key `(tenant_id, id)`, unique signal key, enum and size checks, write-once grants) and `capture.connector_cursors`, both under RLS. The store ingests with `ON CONFLICT (tenant_id, id) DO NOTHING` and appends `activity.recorded` to the outbox only when a row was actually inserted, in the same tenant transaction.
+- [`connector.rs`](../services/capture-hub/src/connector.rs) adds the `Connector` trait (`fetch(cursor, limit)` → page plus opaque `next`), the `Runner` that drains every connector from its stored cursor, and `replay`, which reads from the beginning through the same idempotent path without touching the stored cursor. A page and its cursor commit together; an oversized page or a `next` that does not advance is refused before anything is written.
+- [`http.rs`](../services/capture-hub/src/http.rs) adds `POST /v1/events`: a principal token with `capture:write`, the event's firm and actor must be the caller's, the id is recomputed and a mismatch is a 400, and the answer is 201 new or 200 existing with `created`. Bodies over 64 KiB are 413; problems are RFC 9457.
+- [`contracts/openapi/capture.v1.yaml`](../contracts/openapi/capture.v1.yaml) and [ADR-0021](adr/0021-idempotent-capture-and-replay.md) document the surface, the id rule, the cursor rule and replay. The service is in the [`Dockerfile`](../Dockerfile) and the compose stack (migrations and a healthchecked `capture` container).
+- Verifying the stack exposed two latent bugs. The `Dockerfile` copied `crates/` and `services/` but not `tools/`, so `--locked` workspace resolution had been broken since P1-11 added `tools/new-service` as a member; the image now copies that directory (and `.dockerignore` allows it while still excluding the SDK generator). The Postgres bootstrap ran only when `pgdata` was empty, so an existing dev volume would never gain `svc_capture`; a one-shot `bootstrap` container now re-applies the idempotent files, including a new `svc_capture LOGIN` line, on every `up`. Verified on the existing volume: all six containers healthy, `capture` listening on `:8084` and relaying the outbox, and `capture.activity_events`, `capture.connector_cursors` and `svc_capture` present. Also smoke-tested `migrate`, `serve` and `/health` against a scratch database.
+- Tests: 27 in `timelex-types`; 14 store, 9 runner and 13 HTTP database tests. The acceptance test delivers the same event twice and asserts one row and one outbox event. I made it bite twice on purpose: a conflict clause that touches the row fails with the write-once grant, and an early-return mutation fails on `created`. Both were restored.
+
+**Decisions and why**
+- **The id is computed from the signal, so deduplication needs no memory.** Any in-memory or cache-based set forgets on restart and differs per instance. A database primary key is the one place a second delivery meets the first in every deployment shape.
+- **The rule excludes kind, actor and capture time.** A corrected label, a late capture or a redaction pass must not turn one signal into two events. The four inputs are the ones that say *which signal this is*.
+- **The receiver recomputes the id.** A sender-supplied key would let a buggy connector force duplicates by inventing ids; recomputing makes the id a checkable claim and a mismatch a 400.
+- **Length prefixes and a NUL-terminated domain.** Concatenation alone lets `ab`+`c` collide with `a`+`bc`; the layout is part of the contract because every future `1.x` reader must compute the same id.
+- **Events stay write-once.** The service role has no `UPDATE` or `DELETE`; a correction is a new event (ADR-0006). The duplicate path must therefore change nothing, which is what the outbox guard enforces.
+- **Page and cursor in one transaction.** Storing first with no cursor is merely re-reading; moving the cursor first loses events. One transaction removes the choice.
+- **Replay does not move the cursor.** A replay after a fix fills gaps, while a scheduled run continues from where it was; moving the cursor would make the next run re-read work replay had already covered.
+- **The gateway is not wired yet.** There is no public caller until quick capture (P2-08); the contract says the interface is private, and adding a gateway route with no client would be surface without a user.
+
+**Next:** P2-03, the Microsoft 365 mail connector (admin consent, subscriptions, renewal, lifecycle), as the first real `Connector` implementation. P1-12 remains branch protection and needs a shared repository setting.
+
+## 2026-11-01: P2-01 — event contract v1, and the versioning rules that make it true
 
 **Trigger:** the activity-event schema and its Rust mirror existed since the walking skeleton, but P2-01 asked for versioning rules and a backward-compatibility test. The old contract promised that "additive changes bump the minor" while `additionalProperties: false` and serde's `deny_unknown_fields` made every reader reject a newer minor. During the first rolling deploy, an old consumer would have thrown away valid events. A promise the schema contradicts is worse than no promise.
 

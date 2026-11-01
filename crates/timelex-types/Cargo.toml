@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.11"
 time = { version = "0.3", features = ["serde-well-known"] }
 
 [dev-dependencies]

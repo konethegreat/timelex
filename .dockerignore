@@ -13,5 +13,8 @@ eval
 docs
 packages
 plugin
-tools
+# The workspace manifest names tools/new-service, so cargo needs its manifest even when only the
+# service binaries are built. The SDK generator and the link checker stay out of the context.
+tools/sdk-gen
+tools/check_links.py
 *.pem

@@ -8,12 +8,14 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | Service | What it is | Where it listens |
 |---|---|---|
-| `postgres` | Postgres 17; the bootstrap is applied on first start | `127.0.0.1:55433` |
+| `postgres` | Postgres 17 | `127.0.0.1:55433` |
 | `seaweedfs` | S3-compatible object storage (S3 gateway) | `127.0.0.1:9100` |
 | `keys` | one-shot: generates the gateway key pair, the operator key and the vault master key | the `keys` volume |
-| `identity-migrate`, `vault-migrate` | one-shot migrations as `timelex_migrator` | |
+| `bootstrap` | one-shot: re-applies the roles, schemas, tenancy helpers and dev logins on every start | |
+| `identity-migrate`, `vault-migrate`, `capture-migrate` | one-shot migrations as `timelex_migrator` | |
 | `identity` | identity service | `identity:8081`, container network only |
 | `vault` | vault service plus its outbox relay | `vault:8082`, container network only |
+| `capture` | capture service plus its outbox relay | `capture:8084`, container network only |
 | `gateway` | public edge | `http://127.0.0.1:8088` |
 
 ```bash
@@ -22,7 +24,7 @@ docker compose -f deploy/docker-compose.yml ps          # wait for healthy
 curl -s http://127.0.0.1:8088/health
 ```
 
-`down` keeps the data volumes; `down -v` deletes them. The Postgres bootstrap and the dev login grants run **only when `pgdata` is empty**, so a changed bootstrap needs `down -v` (which deletes local data).
+`down` keeps the data volumes; `down -v` deletes them. The `bootstrap` container re-applies the Postgres bootstrap and the dev login grants on **every** `up`; the files are written to be safe to repeat, so a changed bootstrap (for example a newly provisioned service) reaches an existing volume without deleting data.
 
 ### Keys are generated, never committed
 
