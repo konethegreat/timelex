@@ -4,7 +4,28 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-13 increment 3 — the host can call an MCP server
+## 2026-11-01 (latest): P1-13 increment 2 — the host leases its key, and the vault audits the use
+
+**Trigger:** the model loop and the MCP client were done, but the host still had no way to obtain the firm's Anthropic key. ADR-0018 point 8 said the key is a per-run lease, and the vault's ADR-0004 lease had been waiting for its first caller. The blocker was identity: a background host has no user session, and ADR-0012 makes the gateway the only issuer of user tokens.
+
+**Done**
+- [`crates/timelex-auth/src/workload.rs`](../crates/timelex-auth/src/workload.rs) adds workload identity ([ADR-0020](adr/0020-workload-identity-and-leases.md)). `WorkloadSigner` mints `iss: timelex-<service>`, `aud`, `kind: workload`, `svc`, `tid`, `sub`, `purpose`; `WorkloadVerifier` trusts an explicit `service:kid=base64` map with globally unique key ids. Both reuse the gateway's signature, lifetime, skew and clock rules. The two verifiers are disjoint: a principal token is not a workload token and a workload token with `key` or `perms` is malformed. 13 tests, including a stolen key that signs a sibling service's name.
+- The vault store gains `lease(LeaseActor, SecretKind)` ([`services/vault/src/store.rs`](../services/vault/src/store.rs)): one tenant transaction, `FOR UPDATE` on the live row, `last_used_at`, a `used` audit entry (`lease <service> <purpose>`, actor the initiating user), no outbox event. `LEASE_SECONDS` is 60. Four database tests: the value and expiry, revocation, another firm's invisibility, and a replacement's value.
+- The HTTP route `POST /internal/v1/secrets/{kind}/lease` ([`services/vault/src/http.rs`](../services/vault/src/http.rs)) takes a `Workload` extractor and a purpose→kind map (`model_run` → `anthropic_api_key`) checked before any lookup, so a wrong purpose cannot probe which kinds exist. `TIMELEX_WORKLOAD_PUBLIC_KEYS` is optional; absent, every lease is 401. Four HTTP tests cover the round trip and `lastUsedAt`, every rejected token shape plus the fail-closed vault, the purpose check, and firm/revoked isolation.
+- [`services/mcp-host/src/vault.rs`](../services/mcp-host/src/vault.rs) adds `VaultKeySource`, `LeasePurpose::ModelRun`, `Lease` and `LeaseError`. It signs per lease, posts with no body, accepts only the kind it asked for, parses the value through `SecretValue`, redacts it in `Debug`, and keeps the vault's text out of every error. Five tests against a loopback stub that verifies the token exactly as the real vault does.
+- Contracts and docs: [`vault.internal.v1.yaml`](../contracts/openapi/vault.internal.v1.yaml), a workload-token section in `contracts/internal-auth.md`, ADR-0020 and INDEX, TASKS (P1-05 and P1-13), ARCHITECTURE, both service READMEs and this entry.
+
+**Decisions and why**
+- **Per-service keys, not a gateway-minted token.** The gateway would have to sign for a service with no user request behind it, which is the confused deputy ADR-0012 exists to prevent. A shared secret was already rejected there, and mTLS carries no firm, user or purpose.
+- **Lease by kind, not by secret id.** Leasing by id would need a metadata call and `settings:manage`, an admin permission a background host should not hold. The purpose table gives it exactly one kind.
+- **The purpose is checked before the lookup.** Otherwise a compromised host could use 403/404 to learn which kinds a firm has stored.
+- **No event on a lease.** An access is not a change; a busy host would bury the activity feed. The audit chain and `lastUsedAt` are the record.
+- **Expiry is a contract, not a recall.** The vault hands over plaintext and keeps no revocable copy, so 60 seconds plus the caller's obligation to drop the value is the honest rule. A server-side revocation list would imply a recall that does not exist.
+- **Fail closed.** No configured workload key means no lease, and a malformed value stops startup. There is no development bypass.
+
+**Next:** the `host` schema and the HTTP workflow routes (P3-06). P1-12 is still branch protection and needs a shared repository setting.
+
+## 2026-11-01: P1-13 increment 3 — the host can call an MCP server
 
 **Trigger:** the model loop could spend a firm's Rand, but nothing connected it to the tools a workflow needs. P1-08 verified the server side of `rmcp`; the client side was the missing half of P1-13, and the SDK's client defaults include a legacy fallback and session recovery that TimeLex must never use.
 

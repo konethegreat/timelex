@@ -22,9 +22,10 @@
 //! assert_eq!(price.cost(&usage), Rand::from_micros(7_200));
 //! ```
 //!
-//! The key path is a lease from the vault (ADR-0004): the caller leases the tenant's
-//! `anthropic_api_key`, builds an [`AnthropicProvider`] with it for the run, and drops it
-//! afterwards. `SecretValue` wipes the key on drop and redacts its `Debug`.
+//! The key path is a lease from the vault (ADR-0004, ADR-0020): the caller uses a
+//! [`VaultKeySource`] to lease the tenant's `anthropic_api_key`, builds an [`AnthropicProvider`]
+//! with it for the run, and drops it afterwards. `SecretValue` wipes the key on drop and redacts
+//! its `Debug`.
 
 mod anthropic;
 mod ladder;
@@ -32,6 +33,7 @@ mod price;
 mod provider;
 mod rand;
 mod run;
+mod vault;
 
 pub use anthropic::{AnthropicProvider, DEFAULT_BASE_URL};
 pub use ladder::{Ladder, TenantPolicy};
@@ -43,3 +45,4 @@ pub use rand::Rand;
 pub use run::{
     run, Call, CallOutcome, Report, ReviewReason, RunInput, RunPolicy, Terminal, Validator, Verdict,
 };
+pub use vault::{Lease, LeaseError, LeasePurpose, VaultKeySource};

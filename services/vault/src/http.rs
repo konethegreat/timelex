@@ -1,13 +1,20 @@
 // Written by Kone Tshivhinda & Claude
-//! The vault service's HTTP layer: `contracts/openapi/vault.v1.yaml`, nothing more.
+//! The vault service's HTTP layer: `contracts/openapi/vault.v1.yaml` for the gateway, and
+//! `contracts/openapi/vault.internal.v1.yaml` for a service that leases a key (ADR-0020).
 //!
-//! Every route except `/health` demands an internal token (ADR-0012) signed by the gateway and of
-//! kind `principal`; the permission check (`settings:manage`) is a store rule, so it cannot be
+//! Every public route except `/health` demands an internal token (ADR-0012) signed by the gateway and
+//! of kind `principal`; the permission check (`settings:manage`) is a store rule, so it cannot be
 //! bypassed by a route. Tenant, user and permissions come from the verified token, never from the
 //! request.
 //!
-//! **No response carries a value.** The metadata type has no field for one, and the only plaintext
-//! in the process is the [`LoadedSecret`] handed to the provider check, which is wiped on drop.
+//! The internal lease is the one route that answers with a value. It needs a workload token from a
+//! service whose key this vault explicitly trusts, and the token's purpose names the only kind that
+//! service may receive. The reply is `no-store` and holds the value for the life of that response
+//! only.
+//!
+//! **No other response carries a value.** The metadata type has no field for one, and the only
+//! plaintext in the process is a [`LoadedSecret`] handed to the provider check, or the lease being
+//! serialised, both wiped on drop.
 
 use std::sync::Arc;
 
@@ -21,13 +28,13 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
-use timelex_auth::{Caller, Verifier};
+use timelex_auth::{Caller, VerifiedWorkload, Verifier, WorkloadVerifier};
 use timelex_vault::{SecretId, SecretKind};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::store::{
-    Actor, LoadedSecret, PutOutcome, PutSecretRequest, SecretMetadata, TestOutcome, VaultStore,
+    Actor, LeaseActor, LoadedSecret, PutOutcome, PutSecretRequest, SecretMetadata, TestOutcome, VaultStore,
 };
 use crate::validator::{CheckResult, ProviderValidator};
 
@@ -39,11 +46,18 @@ pub const MAX_BODY_BYTES: usize = 64 * 1024;
 pub struct AppState {
     store: VaultStore,
     verifier: Arc<Verifier>,
+    workload: Option<Arc<WorkloadVerifier>>,
     validator: Arc<dyn ProviderValidator>,
 }
 
-/// Build the router. Kept apart from `main` so tests can call it without a socket.
-pub fn router(store: VaultStore, verifier: Verifier, validator: Arc<dyn ProviderValidator>) -> Router {
+/// Build the router. Kept apart from `main` so tests can call it without a socket. `workload` is the
+/// services allowed to lease a key; `None` (no key configured) refuses every lease.
+pub fn router(
+    store: VaultStore,
+    verifier: Verifier,
+    workload: Option<WorkloadVerifier>,
+    validator: Arc<dyn ProviderValidator>,
+) -> Router {
     let router = Router::new()
         .route("/health", get(health))
         .route("/v1/secrets", get(list_secrets))
@@ -53,11 +67,13 @@ pub fn router(store: VaultStore, verifier: Verifier, validator: Arc<dyn Provider
         .route("/v1/secrets/{key}", put(put_secret).delete(revoke_secret))
         .route("/v1/secrets/{id}/test", post(test_secret))
         .route("/v1/secrets/{id}/rotate", post(rotate_secret))
+        .route("/internal/v1/secrets/{kind}/lease", post(lease_secret))
         .fallback(|| async { ApiError::NotFound })
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(AppState {
             store,
             verifier: Arc::new(verifier),
+            workload: workload.map(Arc::new),
             validator,
         });
     timelex_telemetry::instrument(router, "vault")
@@ -203,6 +219,46 @@ impl Verified {
     }
 }
 
+// ---------- authentication of a *service* (a lease caller) ----------
+
+/// A verified workload token (ADR-0020). Only the internal lease route accepts one.
+struct Workload(VerifiedWorkload);
+
+impl FromRequestParts<AppState> for Workload {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+        let token = parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .ok_or(ApiError::Unauthorized)?;
+        // Fail closed: a vault with no trusted workload key refuses every lease.
+        let Some(verifier) = state.workload.as_ref() else {
+            eprintln!("vault: a lease was attempted but no workload key is configured");
+            return Err(ApiError::Unauthorized);
+        };
+        match verifier.verify(token) {
+            Ok(v) => Ok(Workload(v)),
+            Err(reason) => {
+                // The reason is for the operator; the caller always gets the same 401.
+                eprintln!("vault: workload token rejected: {reason:?}");
+                Err(ApiError::Unauthorized)
+            }
+        }
+    }
+}
+
+/// The kind each purpose may lease. A purpose that is not listed leases nothing: the vocabulary and
+/// its reach grow together, never by accident.
+fn kind_for_purpose(purpose: &str) -> Option<SecretKind> {
+    match purpose {
+        "model_run" => Some(SecretKind::AnthropicApiKey),
+        _ => None,
+    }
+}
+
 /// `Json<T>` with our error bodies. The detail is fixed text: serde's own message can echo values.
 struct Body<T>(T);
 
@@ -327,6 +383,16 @@ struct TestResultJson {
     checked_at: OffsetDateTime,
 }
 
+/// The one response that carries a value, by design (ADR-0020). Never logged, never cached.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LeaseJson<'a> {
+    kind: &'static str,
+    value: &'a str,
+    #[serde(with = "time::serde::rfc3339")]
+    expires_at: OffsetDateTime,
+}
+
 // ---------- helpers ----------
 
 /// Nothing here is worth caching, and a cache between the vault and the gateway must never keep a
@@ -445,4 +511,41 @@ async fn revoke_secret(
     let id = parse_id(&id)?;
     state.store.revoke(actor, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /internal/v1/secrets/{kind}/lease`: hand a service the firm's live key for one purpose.
+///
+/// The purpose narrows what the service may receive and is checked before any lookup, so a wrong
+/// purpose cannot probe which kinds a firm has stored. The value lives only in this response.
+async fn lease_secret(
+    State(state): State<AppState>,
+    caller: Workload,
+    Path(kind): Path<String>,
+) -> Result<Response, ApiError> {
+    let kind = SecretKind::parse(&kind)
+        .ok_or_else(|| ApiError::BadRequest("kind is not a known secret kind".into()))?;
+    match kind_for_purpose(&caller.0.purpose) {
+        Some(allowed) if allowed == kind => {}
+        _ => return Err(ApiError::Forbidden),
+    }
+    let lease = state
+        .store
+        .lease(
+            LeaseActor {
+                tenant: caller.0.tenant,
+                user: caller.0.user,
+                service: caller.0.service,
+                purpose: caller.0.purpose,
+            },
+            kind,
+        )
+        .await?;
+    Ok(reply(
+        StatusCode::OK,
+        Json(LeaseJson {
+            kind: lease.kind.as_str(),
+            value: lease.value.expose_secret(),
+            expires_at: lease.expires_at,
+        }),
+    ))
 }

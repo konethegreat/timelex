@@ -12,7 +12,8 @@ pub mod validator;
 
 pub use error::StoreError;
 pub use store::{
-    Actor, Clock, LoadedSecret, PutOutcome, PutSecretRequest, SecretMetadata, TestOutcome, VaultStore,
+    Actor, Clock, Lease, LeaseActor, LoadedSecret, PutOutcome, PutSecretRequest, SecretMetadata, TestOutcome,
+    VaultStore, LEASE_SECONDS,
 };
 pub use validator::{CheckResult, LiveValidator, ProviderValidator};
 

@@ -88,21 +88,36 @@ impl Kind {
 // The JWT payload. `deny_unknown_fields`: a token with a claim we do not know is rejected, not ignored.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Claims {
-    iss: String,
-    aud: String,
-    iat: i64,
-    exp: i64,
-    jti: String,
-    kind: String,
+pub(crate) struct Claims {
+    pub(crate) iss: String,
+    pub(crate) aud: String,
+    pub(crate) iat: i64,
+    pub(crate) exp: i64,
+    pub(crate) jti: String,
+    pub(crate) kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tid: Option<Uuid>,
+    pub(crate) tid: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sub: Option<Uuid>,
+    pub(crate) sub: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    key: Option<Uuid>,
+    pub(crate) key: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    perms: Option<Vec<String>>,
+    pub(crate) perms: Option<Vec<String>>,
+    /// The calling service. Only a `workload` token has one (ADR-0020).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) svc: Option<String>,
+    /// Why the service is calling. Only a `workload` token has one (ADR-0020).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) purpose: Option<String>,
+}
+
+/// A key id is a short, opaque name that is safe in a header and a log line.
+pub(crate) fn valid_kid(kid: &str) -> bool {
+    !kid.is_empty()
+        && kid.len() <= 64
+        && kid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// A key could not be loaded.
@@ -174,12 +189,7 @@ impl fmt::Debug for Signer {
 impl Signer {
     /// Load a private key: base64 of a PKCS#8 DER Ed25519 key, as printed by [`generate_keypair`].
     pub fn from_base64(kid: &str, pkcs8_b64: &str) -> Result<Self, KeyError> {
-        if kid.is_empty()
-            || kid.len() > 64
-            || !kid
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-        {
+        if !valid_kid(kid) {
             return Err(KeyError("kid must be 1 to 64 letters, digits, '-' or '_'".into()));
         }
         let der = STANDARD
@@ -220,6 +230,8 @@ impl Signer {
             sub: None,
             key: None,
             perms: None,
+            svc: None,
+            purpose: None,
         };
         if let Caller::Principal(p) = caller {
             claims.tid = Some(p.tenant.as_uuid());
@@ -227,10 +239,15 @@ impl Signer {
             claims.key = Some(p.key.as_uuid());
             claims.perms = Some(p.permissions.iter().map(|p| p.as_str().to_owned()).collect());
         }
+        self.sign_claims(&claims)
+    }
+
+    /// Encode an already-built claim set. Shared with [`crate::WorkloadSigner`], which issues a
+    /// token about a service rather than a user.
+    pub(crate) fn sign_claims(&self, claims: &Claims) -> Result<String, KeyError> {
         let mut header = Header::new(Algorithm::EdDSA);
         header.kid = Some(self.kid.clone());
-        jsonwebtoken::encode(&header, &claims, &self.key)
-            .map_err(|e| KeyError(format!("signing failed: {e}")))
+        jsonwebtoken::encode(&header, claims, &self.key).map_err(|e| KeyError(format!("signing failed: {e}")))
     }
 
     /// [`Signer::sign_at`] with the system clock.
@@ -287,46 +304,15 @@ impl Verifier {
 
     /// Check a presented token at time `now`.
     pub fn verify_at(&self, token: &str, now: OffsetDateTime) -> Result<Verified, VerifyError> {
-        let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::Malformed)?;
-        if header.alg != Algorithm::EdDSA || header.typ.as_deref().is_some_and(|t| t != "JWT") {
-            return Err(VerifyError::BadAlgorithm);
-        }
-        let kid = header.kid.as_deref().ok_or(VerifyError::UnknownKey)?;
-        let key = self.keys.get(kid).ok_or(VerifyError::UnknownKey)?;
-
-        // Only the signature and structure are checked by the library; every claim rule is below, so
-        // all of them use the same `now` and are tested the same way.
-        let mut validation = Validation::new(Algorithm::EdDSA);
-        validation.validate_exp = false;
-        validation.validate_nbf = false;
-        validation.validate_aud = false;
-        validation.required_spec_claims.clear();
-        let data = jsonwebtoken::decode::<Claims>(token, key, &validation).map_err(|e| match e.kind() {
-            jsonwebtoken::errors::ErrorKind::InvalidSignature => VerifyError::BadSignature,
-            jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => VerifyError::BadAlgorithm,
-            _ => VerifyError::Malformed,
-        })?;
-        let c = data.claims;
-
+        let (c, _) = decode_claims(token, |kid| self.keys.get(kid))?;
         if c.iss != ISSUER {
             return Err(VerifyError::WrongIssuer);
         }
         if c.aud != self.audience {
             return Err(VerifyError::WrongAudience);
         }
-        let now_s = now.unix_timestamp();
-        let lifetime = c.exp.checked_sub(c.iat).ok_or(VerifyError::BadLifetime)?;
-        if lifetime <= 0 || lifetime > MAX_LIFETIME_SECONDS {
-            return Err(VerifyError::BadLifetime);
-        }
-        if now_s > c.exp.saturating_add(CLOCK_SKEW_SECONDS) {
-            return Err(VerifyError::Expired);
-        }
-        if c.iat > now_s.saturating_add(CLOCK_SKEW_SECONDS) {
-            return Err(VerifyError::NotYetValid);
-        }
+        let expires_at = check_times(&c, now)?;
         let caller = caller_from_claims(&c)?;
-        let expires_at = OffsetDateTime::from_unix_timestamp(c.exp).map_err(|_| VerifyError::BadClaims)?;
         Ok(Verified {
             caller,
             jti: c.jti,
@@ -340,12 +326,56 @@ impl Verifier {
     }
 }
 
+/// Header, key selection and signature: the part every issuer shares. Only the signature and
+/// structure are checked by the library; every claim rule is applied by the caller with one `now`.
+pub(crate) fn decode_claims<'a>(
+    token: &str,
+    key_for: impl Fn(&str) -> Option<&'a DecodingKey>,
+) -> Result<(Claims, String), VerifyError> {
+    let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::Malformed)?;
+    if header.alg != Algorithm::EdDSA || header.typ.as_deref().is_some_and(|t| t != "JWT") {
+        return Err(VerifyError::BadAlgorithm);
+    }
+    let kid = header.kid.ok_or(VerifyError::UnknownKey)?;
+    let key = key_for(&kid).ok_or(VerifyError::UnknownKey)?;
+
+    let mut validation = Validation::new(Algorithm::EdDSA);
+    validation.validate_exp = false;
+    validation.validate_nbf = false;
+    validation.validate_aud = false;
+    validation.required_spec_claims.clear();
+    let data = jsonwebtoken::decode::<Claims>(token, key, &validation).map_err(|e| match e.kind() {
+        jsonwebtoken::errors::ErrorKind::InvalidSignature => VerifyError::BadSignature,
+        jsonwebtoken::errors::ErrorKind::InvalidAlgorithm => VerifyError::BadAlgorithm,
+        _ => VerifyError::Malformed,
+    })?;
+    Ok((data.claims, kid))
+}
+
+/// The lifetime and clock rules, identical for the gateway's tokens and a service's.
+pub(crate) fn check_times(c: &Claims, now: OffsetDateTime) -> Result<OffsetDateTime, VerifyError> {
+    let now_s = now.unix_timestamp();
+    let lifetime = c.exp.checked_sub(c.iat).ok_or(VerifyError::BadLifetime)?;
+    if lifetime <= 0 || lifetime > MAX_LIFETIME_SECONDS {
+        return Err(VerifyError::BadLifetime);
+    }
+    if now_s > c.exp.saturating_add(CLOCK_SKEW_SECONDS) {
+        return Err(VerifyError::Expired);
+    }
+    if c.iat > now_s.saturating_add(CLOCK_SKEW_SECONDS) {
+        return Err(VerifyError::NotYetValid);
+    }
+    OffsetDateTime::from_unix_timestamp(c.exp).map_err(|_| VerifyError::BadClaims)
+}
+
 fn caller_from_claims(c: &Claims) -> Result<Caller, VerifyError> {
     let has_principal_fields = c.tid.is_some() || c.sub.is_some() || c.key.is_some() || c.perms.is_some();
+    // A workload token is signed by the calling service, never by the gateway (ADR-0020).
+    let has_workload_fields = c.svc.is_some() || c.purpose.is_some();
     match c.kind.as_str() {
         "service" | "operator" => {
             // These kinds carry no tenant, user, key or permissions, so a token cannot be repurposed.
-            if has_principal_fields {
+            if has_principal_fields || has_workload_fields {
                 return Err(VerifyError::BadClaims);
             }
             Ok(if c.kind == "service" {
@@ -355,6 +385,9 @@ fn caller_from_claims(c: &Claims) -> Result<Caller, VerifyError> {
             })
         }
         "principal" => {
+            if has_workload_fields {
+                return Err(VerifyError::BadClaims);
+            }
             let (Some(tid), Some(sub), Some(key), Some(perms)) = (c.tid, c.sub, c.key, c.perms.as_ref())
             else {
                 return Err(VerifyError::BadClaims);
@@ -374,6 +407,10 @@ fn caller_from_claims(c: &Claims) -> Result<Caller, VerifyError> {
         _ => Err(VerifyError::BadClaims),
     }
 }
+
+mod workload;
+
+pub use workload::{VerifiedWorkload, WorkloadSigner, WorkloadVerifier};
 
 /// A freshly generated Ed25519 key pair, in the forms the environment variables expect.
 pub struct KeyPair {

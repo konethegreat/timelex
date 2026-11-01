@@ -16,7 +16,8 @@ use timelex_db::TenantPool;
 use timelex_identity::{Permission, TenantId, UserId};
 use timelex_vault::{AuditAction, LocalKeyWrapper, SecretKind};
 use timelex_vault_service::{
-    Actor, Clock, PutOutcome, PutSecretRequest, StoreError, TestOutcome, VaultStore, MIGRATIONS,
+    Actor, Clock, LeaseActor, PutOutcome, PutSecretRequest, StoreError, TestOutcome, VaultStore,
+    LEASE_SECONDS, MIGRATIONS,
 };
 use uuid::Uuid;
 
@@ -704,5 +705,165 @@ async fn every_write_appends_one_secret_event_without_the_value() {
     let payload: serde_json::Value = tested.get("payload");
     assert_eq!(payload["data"]["result"], "passed");
     assert_eq!(payload["source"], "vault");
+    assert_chain_verifies(&env.db, tenant).await;
+}
+
+// ---------- leases (P1-13) ----------
+
+fn lease_actor(tenant: TenantId) -> LeaseActor {
+    LeaseActor {
+        tenant,
+        user: UserId::from_uuid(Uuid::new_v4()),
+        service: "mcp-host".into(),
+        purpose: "model_run".into(),
+    }
+}
+
+#[tokio::test]
+async fn a_lease_returns_the_live_value_and_records_its_use() {
+    let Some(env) = env().await else { return };
+    let tenant = TenantId::from_uuid(Uuid::new_v4());
+    env.store
+        .put(
+            settings(tenant),
+            SecretKind::AnthropicApiKey,
+            request(ANTHROPIC_V1),
+        )
+        .await
+        .unwrap();
+    env.clock.advance(Duration::seconds(30));
+    let actor = lease_actor(tenant);
+
+    let lease = env
+        .store
+        .lease(actor.clone(), SecretKind::AnthropicApiKey)
+        .await
+        .unwrap();
+    assert_eq!(lease.kind, SecretKind::AnthropicApiKey);
+    assert_eq!(lease.value.expose_secret(), ANTHROPIC_V1);
+    assert_eq!(
+        lease.expires_at,
+        env.clock.now() + Duration::seconds(LEASE_SECONDS)
+    );
+    assert!(
+        !format!("{lease:?}").contains(ANTHROPIC_V1),
+        "Debug hides the value"
+    );
+
+    let listed = env.store.list(settings(tenant), false).await.unwrap();
+    assert_eq!(listed[0].last_used_at, Some(env.clock.now()));
+    assert_eq!(listed[0].last_tested_at, None, "a lease is not a test");
+
+    let audits: Vec<(String, String, Uuid)> = sqlx::query_as(
+        "SELECT action, detail, actor_id FROM vault.secret_audit \
+         WHERE tenant_id = $1 ORDER BY seq",
+    )
+    .bind(tenant.as_uuid())
+    .fetch_all(&env.db.admin)
+    .await
+    .unwrap();
+    assert_eq!(audits.len(), 2);
+    assert_eq!(audits[1].0, "used");
+    assert_eq!(audits[1].1, "lease mcp-host model_run");
+    assert_eq!(audits[1].2, actor.user.as_uuid());
+    assert_chain_verifies(&env.db, tenant).await;
+}
+
+#[tokio::test]
+async fn a_revoked_or_absent_secret_cannot_be_leased() {
+    let Some(env) = env().await else { return };
+    let tenant = TenantId::from_uuid(Uuid::new_v4());
+    assert_eq!(
+        env.store
+            .lease(lease_actor(tenant), SecretKind::AnthropicApiKey)
+            .await
+            .unwrap_err(),
+        StoreError::NotFound
+    );
+
+    let PutOutcome::Created(meta) = env
+        .store
+        .put(
+            settings(tenant),
+            SecretKind::AnthropicApiKey,
+            request(ANTHROPIC_V1),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("creates");
+    };
+    env.store.revoke(settings(tenant), meta.id).await.unwrap();
+    assert_eq!(
+        env.store
+            .lease(lease_actor(tenant), SecretKind::AnthropicApiKey)
+            .await
+            .unwrap_err(),
+        StoreError::NotFound
+    );
+    let used: i64 = sqlx::query_scalar("SELECT count(*) FROM vault.secret_audit WHERE action = 'used'")
+        .fetch_one(&env.db.admin)
+        .await
+        .unwrap();
+    assert_eq!(used, 0, "a refused lease is not use");
+    assert_chain_verifies(&env.db, tenant).await;
+}
+
+#[tokio::test]
+async fn another_firms_secret_is_invisible_to_a_lease() {
+    let Some(env) = env().await else { return };
+    let owner = TenantId::from_uuid(Uuid::new_v4());
+    let other = TenantId::from_uuid(Uuid::new_v4());
+    env.store
+        .put(
+            settings(owner),
+            SecretKind::AnthropicApiKey,
+            request(ANTHROPIC_V1),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        env.store
+            .lease(lease_actor(other), SecretKind::AnthropicApiKey)
+            .await
+            .unwrap_err(),
+        StoreError::NotFound
+    );
+    let last_used: Option<OffsetDateTime> =
+        sqlx::query_scalar("SELECT last_used_at FROM vault.secrets WHERE tenant_id = $1")
+            .bind(owner.as_uuid())
+            .fetch_one(&env.db.admin)
+            .await
+            .unwrap();
+    assert_eq!(last_used, None, "the owner's secret was not touched");
+}
+
+#[tokio::test]
+async fn a_lease_gets_the_value_that_is_live_now() {
+    let Some(env) = env().await else { return };
+    let tenant = TenantId::from_uuid(Uuid::new_v4());
+    env.store
+        .put(
+            settings(tenant),
+            SecretKind::AnthropicApiKey,
+            request(ANTHROPIC_V1),
+        )
+        .await
+        .unwrap();
+    env.clock.advance(Duration::seconds(5));
+    env.store
+        .put(
+            settings(tenant),
+            SecretKind::AnthropicApiKey,
+            request(ANTHROPIC_V2),
+        )
+        .await
+        .unwrap();
+    let lease = env
+        .store
+        .lease(lease_actor(tenant), SecretKind::AnthropicApiKey)
+        .await
+        .unwrap();
+    assert_eq!(lease.value.expose_secret(), ANTHROPIC_V2);
     assert_chain_verifies(&env.db, tenant).await;
 }

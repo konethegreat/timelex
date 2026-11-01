@@ -115,6 +115,7 @@ async fn world() -> Option<World> {
     let vault = vault_http::router(
         VaultStore::new(vault_pool, Arc::new(LocalKeyWrapper::new(fresh_master_key()))),
         vault_verifier,
+        None,
         Arc::new(Accepted),
     );
     tokio::spawn(async move { axum::serve(listener, vault).await.unwrap() });
