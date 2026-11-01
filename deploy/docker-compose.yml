@@ -1,29 +1,144 @@
 # Written by Kone Tshivhinda & Claude
-# Local infrastructure only (Phase 1 adds the services). For development; credentials are
-# throwaway local values, never reuse them anywhere else.
+# Local development stack. Credentials are generated into the `keys` volume at start-up and never
+# live in this file; Postgres uses trust authentication on a loopback-published port. Never expose
+# this stack or reuse its data anywhere else.
 name: timelex-dev
+
+x-timelex: &timelex
+  image: timelex-dev-services
+  build:
+    context: ..
+    dockerfile: Dockerfile
+    target: services
+
 services:
   postgres:
     image: postgres:17
     environment:
       POSTGRES_USER: timelex
-      POSTGRES_PASSWORD: timelex_local_dev_only
       POSTGRES_DB: timelex
-    ports: ["127.0.0.1:5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+      # Local compose only: no password exists, and the port is published to loopback only.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    # Non-default host port: a developer machine often already runs Postgres on 5432.
+    ports: ["127.0.0.1:55433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/bootstrap/001_roles_and_schemas.sql:/docker-entrypoint-initdb.d/001_roles_and_schemas.sql:ro
+      - ./postgres/bootstrap/002_tenancy.sql:/docker-entrypoint-initdb.d/002_tenancy.sql:ro
+      - ./postgres/bootstrap/003_outbox.sql:/docker-entrypoint-initdb.d/003_outbox.sql:ro
+      - ./postgres/bootstrap/004_provision_services.sql:/docker-entrypoint-initdb.d/004_provision_services.sql:ro
+      - ./postgres/dev/005_dev_logins.sql:/docker-entrypoint-initdb.d/005_dev_logins.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U timelex -d timelex"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U timelex -d timelex"]
       interval: 5s
       timeout: 3s
       retries: 10
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+
+  seaweedfs:
+    # S3-compatible object storage for development. MinIO's published images no longer resolve
+    # (checked 1 Nov 2026), so the local stack uses SeaweedFS on the S3 gateway port.
+    image: chrislusf/seaweedfs:4.51
+    # `mini` is the image's single-node mode: master, volume, filer and the S3 gateway (8333).
+    command: ["mini", "-dir=/data"]
+    # Host port 9100 because 9000 is commonly taken by another S3-compatible tool.
+    ports: ["127.0.0.1:9100:8333"]
+    volumes: ["s3data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keys:
+    <<: *timelex
+    # The volume is root-owned; this one-shot container is the only writer.
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/usr/local/bin/generate-keys"]
     environment:
-      MINIO_ROOT_USER: timelex
-      MINIO_ROOT_PASSWORD: timelex_local_dev_only
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
-    volumes: ["miniodata:/data"]
+      TIMELEX_BINARY: /usr/local/bin/timelex-gateway
+    volumes: ["keys:/keys"]
+    restart: "no"
+
+  identity-migrate:
+    <<: *timelex
+    command: ["migrate"]
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-identity-service
+      TIMELEX_MIGRATOR_DATABASE_URL: postgres://timelex_migrator@postgres:5432/timelex
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  vault-migrate:
+    <<: *timelex
+    command: ["migrate"]
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-vault-service
+      TIMELEX_MIGRATOR_DATABASE_URL: postgres://timelex_migrator@postgres:5432/timelex
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  identity:
+    <<: *timelex
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-identity-service
+      TIMELEX_IDENTITY_ADDR: 0.0.0.0:8081
+      TIMELEX_IDENTITY_DATABASE_URL: postgres://svc_identity@postgres:5432/timelex
+    volumes: ["keys:/keys:ro"]
+    depends_on:
+      identity-migrate:
+        condition: service_completed_successfully
+      keys:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  vault:
+    <<: *timelex
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-vault-service
+      TIMELEX_VAULT_ADDR: 0.0.0.0:8082
+      TIMELEX_VAULT_DATABASE_URL: postgres://svc_vault@postgres:5432/timelex
+    volumes: ["keys:/keys:ro"]
+    depends_on:
+      vault-migrate:
+        condition: service_completed_successfully
+      keys:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    <<: *timelex
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-gateway
+      TIMELEX_GATEWAY_ADDR: 0.0.0.0:8088
+      TIMELEX_SERVICE_URLS: identity=http://identity:8081,vault=http://vault:8082
+    ports: ["127.0.0.1:8088:8088"]
+    volumes: ["keys:/keys:ro"]
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+      identity:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   pgdata:
-  miniodata:
+  s3data:
+  keys:

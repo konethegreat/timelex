@@ -1,0 +1,17 @@
+# Written by Kone Tshivhinda & Claude
+# The service image builds from crates/, services/, contracts/ and the Postgres bootstrap; keep the
+# context small and never send local secrets or build output to the daemon.
+.git
+.github
+target
+node_modules
+**/dist
+**/.env
+**/.env.*
+workers
+eval
+docs
+packages
+plugin
+tools
+*.pem
