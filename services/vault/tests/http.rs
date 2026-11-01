@@ -11,7 +11,7 @@ use axum::http::{header, Method, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use timelex_auth::{generate_keypair, Caller, Principal, Signer, Verifier};
+use timelex_auth::{generate_keypair, Caller, Principal, Signer, Verifier, WorkloadSigner, WorkloadVerifier};
 use timelex_db::testing::{setup as setup_db, ServiceUnderTest, TestDb};
 use timelex_identity::{ApiKeyId, Permission, TenantId, UserId};
 use timelex_vault::LocalKeyWrapper;
@@ -24,6 +24,7 @@ struct Env {
     db: TestDb,
     app: Router,
     signer: Signer,
+    workload: WorkloadSigner,
 }
 
 /// The provider check as a script: every secret gets the same verdict.
@@ -43,6 +44,15 @@ fn random_key() -> [u8; 32] {
 }
 
 async fn env_with(result: CheckResult) -> Option<Env> {
+    env_validating(result, true).await
+}
+
+/// A vault with no workload keys at all: the lease route must fail closed.
+async fn env_without_workload_keys(result: CheckResult) -> Option<Env> {
+    env_validating(result, false).await
+}
+
+async fn env_validating(result: CheckResult, workload_keys: bool) -> Option<Env> {
     let db = setup_db(&ServiceUnderTest {
         service: "vault",
         migrations: &MIGRATIONS,
@@ -52,9 +62,19 @@ async fn env_with(result: CheckResult) -> Option<Env> {
     let kp = generate_keypair().unwrap();
     let signer = Signer::from_base64("k1", &kp.private_pkcs8_base64).unwrap();
     let verifier = Verifier::from_config("vault", &format!("k1={}", kp.public_base64)).unwrap();
+    let wkp = generate_keypair().unwrap();
+    let workload = WorkloadSigner::from_base64("mcp-host", "mh1", &wkp.private_pkcs8_base64).unwrap();
+    let workload_verifier = workload_keys.then(|| {
+        WorkloadVerifier::from_config("vault", &format!("mcp-host:mh1={}", wkp.public_base64)).unwrap()
+    });
     let store = VaultStore::new(tenants, Arc::new(LocalKeyWrapper::new(random_key())));
-    let app = http::router(store, verifier, Arc::new(Fixed(result)));
-    Some(Env { db, app, signer })
+    let app = http::router(store, verifier, workload_verifier, Arc::new(Fixed(result)));
+    Some(Env {
+        db,
+        app,
+        signer,
+        workload,
+    })
 }
 
 async fn env() -> Option<Env> {
@@ -64,6 +84,7 @@ async fn env() -> Option<Env> {
 struct Reply {
     status: StatusCode,
     text: String,
+    cache_control: Option<String>,
 }
 
 impl Reply {
@@ -86,10 +107,15 @@ async fn send(app: &Router, method: Method, path: &str, bearer: Option<&str>, bo
     };
     let response = app.clone().oneshot(req.body(body).unwrap()).await.unwrap();
     let (parts, body) = response.into_parts();
+    let cache_control = parts
+        .headers
+        .get(header::CACHE_CONTROL)
+        .map(|v| v.to_str().unwrap().to_owned());
     let bytes = body.collect().await.unwrap().to_bytes();
     Reply {
         status: parts.status,
         text: String::from_utf8_lossy(&bytes).into_owned(),
+        cache_control,
     }
 }
 
@@ -114,6 +140,22 @@ fn token(env: &Env, principal: &Principal) -> String {
     env.signer
         .sign("vault", &Caller::Principal(principal.clone()))
         .unwrap()
+}
+
+/// What `mcp-host` presents: its own key, the firm, the user whose work it is doing, and a purpose.
+fn workload_token(env: &Env, tenant: TenantId, user: UserId, purpose: &str) -> String {
+    env.workload.sign("vault", tenant, user, purpose).unwrap()
+}
+
+async fn lease(env: &Env, bearer: Option<&str>, kind: &str) -> Reply {
+    send(
+        &env.app,
+        Method::POST,
+        &format!("/internal/v1/secrets/{kind}/lease"),
+        bearer,
+        None,
+    )
+    .await
 }
 
 /// A credential for tests: shaped like the real thing, built at run time.
@@ -605,5 +647,164 @@ async fn rotating_keeps_the_id_and_a_revoked_secret_is_409() {
     )
     .await;
     assert_eq!(r.status, StatusCode::CONFLICT);
+    env.db.cleanup().await;
+}
+
+// ---------- the internal lease ----------
+
+#[tokio::test]
+async fn a_lease_returns_the_live_key_and_records_its_use() {
+    let Some(env) = env().await else { return };
+    let t = tenant();
+    let bearer = token(&env, &settings(t));
+    let secret = value();
+    stored(&env, &bearer, &secret).await;
+
+    let user = UserId::from_uuid(Uuid::new_v4());
+    let lease_bearer = workload_token(&env, t, user, "model_run");
+    let r = lease(&env, Some(&lease_bearer), "anthropic_api_key").await;
+    assert_eq!(r.status, StatusCode::OK);
+    let body = r.json();
+    assert_eq!(body["kind"], "anthropic_api_key");
+    assert_eq!(body["value"], secret);
+    assert!(body["expiresAt"].is_string());
+    assert_eq!(
+        r.cache_control.as_deref(),
+        Some("no-store"),
+        "a value must never be cached"
+    );
+
+    // Leasing is use: the admin can see when the firm's key was last handed out, never the value.
+    let listed = listed(&env, &bearer, "").await;
+    assert!(listed["secrets"][0]["lastUsedAt"].is_string());
+    assert!(
+        listed["secrets"][0].get("lastTestedAt").is_none(),
+        "leasing is not a test"
+    );
+    assert!(!listed.to_string().contains(secret.as_str().unwrap()));
+    env.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn only_a_trusted_workload_token_may_lease() {
+    let Some(env) = env().await else { return };
+    let t = tenant();
+    let user = UserId::from_uuid(Uuid::new_v4());
+    // A secret exists, so a 401 can only be about who is calling.
+    stored(&env, &token(&env, &settings(t)), &value()).await;
+
+    let attacker = WorkloadSigner::from_base64(
+        "mcp-host",
+        "mh1",
+        &generate_keypair().unwrap().private_pkcs8_base64,
+    )
+    .unwrap();
+    let bad: Vec<(&str, Option<String>)> = vec![
+        ("no token", None),
+        ("garbage", Some("garbage".into())),
+        (
+            "a gateway token, even with the right firm",
+            Some(env.signer.sign("vault", &Caller::Principal(settings(t))).unwrap()),
+        ),
+        (
+            "a workload token for another audience",
+            Some(env.workload.sign("identity", t, user, "model_run").unwrap()),
+        ),
+        (
+            "a workload token signed by an untrusted key",
+            Some(attacker.sign("vault", t, user, "model_run").unwrap()),
+        ),
+    ];
+    for (why, bearer) in bad {
+        let r = lease(&env, bearer.as_deref(), "anthropic_api_key").await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{why}");
+        assert_eq!(r.json()["type"], "urn:timelex:problem:unauthenticated", "{why}");
+    }
+    env.db.cleanup().await;
+
+    // A vault with no workload key configured trusts nobody: it fails closed, it does not open up.
+    let Some(closed) = env_without_workload_keys(CheckResult::Accepted).await else {
+        return;
+    };
+    let t = tenant();
+    stored(&closed, &token(&closed, &settings(t)), &value()).await;
+    let bearer = workload_token(&closed, t, user, "model_run");
+    let r = lease(&closed, Some(&bearer), "anthropic_api_key").await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    closed.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_purpose_names_the_only_kind_it_may_lease() {
+    let Some(env) = env().await else { return };
+    let t = tenant();
+    let user = UserId::from_uuid(Uuid::new_v4());
+    stored(&env, &token(&env, &settings(t)), &value()).await;
+
+    // A purpose the vault does not know leases nothing.
+    let r = lease(
+        &env,
+        Some(&workload_token(&env, t, user, "capture.sync")),
+        "anthropic_api_key",
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    // `model_run` names the model key and nothing else. This is refused before any lookup, so an
+    // unpermitted purpose cannot learn which kinds are stored.
+    let r = lease(
+        &env,
+        Some(&workload_token(&env, t, user, "model_run")),
+        "m365_oauth",
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    let r = lease(
+        &env,
+        Some(&workload_token(&env, t, user, "model_run")),
+        "postgres_password",
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    env.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_lease_of_another_firms_or_revoked_secret_is_404() {
+    let Some(env) = env().await else { return };
+    let t = tenant();
+    let user = UserId::from_uuid(Uuid::new_v4());
+    let bearer = token(&env, &settings(t));
+    let metadata = stored(&env, &bearer, &value()).await;
+    let id = id_of(&metadata).to_owned();
+
+    // Another firm's workload token cannot reach this firm's secret...
+    let other = workload_token(&env, tenant(), user, "model_run");
+    assert_eq!(
+        lease(&env, Some(&other), "anthropic_api_key").await.status,
+        StatusCode::NOT_FOUND
+    );
+    // ...and neither can a firm that stored none.
+    let empty = workload_token(&env, tenant(), user, "model_run");
+    assert_eq!(
+        lease(&env, Some(&empty), "anthropic_api_key").await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let r = send(
+        &env.app,
+        Method::DELETE,
+        &format!("/v1/secrets/{id}"),
+        Some(&bearer),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    let own = workload_token(&env, t, user, "model_run");
+    assert_eq!(
+        lease(&env, Some(&own), "anthropic_api_key").await.status,
+        StatusCode::NOT_FOUND
+    );
     env.db.cleanup().await;
 }

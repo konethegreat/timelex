@@ -9,8 +9,9 @@ info:
   description: |
     Pre-alpha, stored-key mode only. The vault holds each firm's bring-your-own provider credentials
     under envelope encryption and never returns a value: secrets can be created, listed as metadata,
-    tested, rotated and revoked (ADR-0004). Workload Identity Federation and the internal short-lived
-    lease used by `mcp-host` and `capture-hub` are not in this version.
+    tested, rotated and revoked (ADR-0004). The short-lived lease a service uses to read a key lives
+    in the separate internal contract, `vault.internal.v1.yaml` (ADR-0020): it is not routed here and
+    is not part of the SDK surface. Workload Identity Federation is not in this version.
 
     **Callers.** Only the gateway reaches this service, over a private interface, with an *internal
     token* signed by the gateway (ADR-0012). Every secrets operation requires a token of kind

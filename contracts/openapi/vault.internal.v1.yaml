@@ -1,0 +1,138 @@
+# Written by Kone Tshivhinda & Claude
+# Vault internal contract v1 (draft). The lease a service calls for a key it may use (ADR-0020).
+# Contract-first: this file leads the code (ADR-0001).
+# This surface is not routed through the gateway and must listen on the private interface only.
+openapi: 3.1.0
+info:
+  title: TimeLex Vault, internal
+  version: 0.1.0
+  summary: Short-lived key leases for trusted services (pre-alpha).
+  description: |
+    Pre-alpha. A TimeLex service that needs a firm's provider key, such as `mcp-host` calling a
+    model, does not hold the key. It asks the vault for a lease: a one-response copy of the value
+    with an expiry, recorded in the firm's audit chain (ADR-0004, ADR-0020).
+
+    **Callers.** Only a service whose public key this vault explicitly trusts may lease. It presents
+    a *workload token* it signed itself (ADR-0020): issuer `timelex-<service>`, kind `workload`, and
+    the firm, the initiating user and a purpose. The vault checks the signature against that
+    service's key and takes the tenant, user, service and purpose from the token, never from the
+    request. A missing or invalid token is 401; a purpose that does not grant the requested kind is
+    403.
+
+    **Purpose names the kind.** A purpose maps to exactly one kind, and a purpose the vault does not
+    know leases nothing. The check runs before any lookup, so a wrong purpose cannot reveal which
+    kinds a firm has stored.
+
+    **The one response with a value.** The lease is the only vault response that carries a plaintext
+    secret, because its caller must present the key to the provider. It is `Cache-Control: no-store`,
+    it is never logged, and the value should be dropped by the caller at `expiresAt` or when the work
+    finishes, whichever comes first. The expiry is advisory: the vault keeps no copy that could be
+    revoked, so a caller holding the value must honour it.
+
+    **What the lease records.** The lease is audited as `used` with the service and purpose, and
+    stamps the secret's `lastUsedAt`. It emits no event, so a busy host does not flood the activity
+    feed. It does not create, replace or test anything.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8082
+    description: Local development. Reachable by services only, never by a client.
+tags:
+  - name: leases
+    description: One short-lived copy of a live secret, for a purpose that grants its kind.
+paths:
+  /internal/v1/secrets/{kind}/lease:
+    post:
+      tags: [leases]
+      operationId: leaseSecret
+      summary: Lease the firm's live secret of a kind
+      description: |
+        Returns the value of the firm's one live secret of `kind`, with an expiry `LEASE_SECONDS`
+        (60) seconds after issue, and records the use on the firm's audit chain. There is no request
+        body. The kind must be the one the workload token's purpose grants; otherwise 403. A firm
+        with no live secret of that kind gets 404, including after revocation.
+      security: [{ workloadToken: [] }]
+      x-required-kind: workload
+      x-allowed-purposes:
+        model_run: anthropic_api_key
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          description: The provider family to lease. A purpose grants exactly one.
+          schema: { $ref: "#/components/schemas/SecretKind" }
+      responses:
+        "200":
+          description: The live value and the moment the caller must stop using it.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lease" }
+        "400":
+          description: The kind in the path is not a known kind. The lookup has not run.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: The token is valid but its purpose does not grant this kind, or the purpose is not in the vocabulary. Always the same body.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: The firm has no live secret of this kind. Also after revocation.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "500":
+          description: The vault could not read or open the secret. Nothing was recorded.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+components:
+  securitySchemes:
+    workloadToken:
+      type: http
+      scheme: bearer
+      description: A short-lived token a service signs with its own key (ADR-0020, `contracts/internal-auth.md`). Never a gateway token and never a tenant API key.
+  schemas:
+    SecretKind:
+      type: string
+      enum: [anthropic_api_key, m365_oauth, google_oauth, generic_api_key]
+    Lease:
+      type: object
+      required: [kind, value, expiresAt]
+      properties:
+        kind: { $ref: "#/components/schemas/SecretKind" }
+        value:
+          type: string
+          description: The plaintext secret. Present only in this response and never logged.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the caller must stop using the value. Advisory; the vault keeps no revocable copy.
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+  responses:
+    Unauthorized:
+      description: Missing, malformed or invalid workload token, or no workload key is configured. Always the same body.
+      headers:
+        WWW-Authenticate:
+          description: Always `Bearer`.
+          schema: { type: string, const: Bearer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use sqlx::postgres::PgRow;
 use sqlx::Row;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use timelex_db::{TenantPool, TenantTx};
 use timelex_identity::{require_permission, IdentityError, Permission, TenantId, UserId};
 use timelex_outbox as outbox;
@@ -99,6 +99,39 @@ impl std::fmt::Debug for PutSecretRequest {
 pub enum PutOutcome {
     Created(SecretMetadata),
     Replaced(SecretMetadata),
+}
+
+/// How long a lease is advertised to be valid (ADR-0020). The caller re-leases per use; the vault
+/// cannot reclaim a plaintext once it has been handed over, so this is a promise, not an expiry.
+pub const LEASE_SECONDS: i64 = 60;
+
+/// Who is leasing a secret: a service acting for one user, for one purpose. Built from a verified
+/// workload token; there are no permissions here because a lease is not a settings operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseActor {
+    pub tenant: TenantId,
+    pub user: UserId,
+    /// The service that signed the workload token, for the audit trail.
+    pub service: String,
+    /// Why it is calling, from a fixed vocabulary (`model_run`). Never a value or a prompt.
+    pub purpose: String,
+}
+
+/// A secret handed to a service in plaintext, with the instant its promise runs out.
+pub struct Lease {
+    pub kind: SecretKind,
+    pub value: SecretValue,
+    pub expires_at: OffsetDateTime,
+}
+
+impl std::fmt::Debug for Lease {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Lease")
+            .field("kind", &self.kind)
+            .field("value", &"****")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// An opened secret, for the provider check. Never leaves the process.
@@ -447,26 +480,61 @@ impl VaultStore {
         }
         let kind = parse_kind(row.get("kind"))?;
         let label: String = row.get("label");
-        let sealed = sealed_from(&row)?;
-        let plaintext = Envelope::open(
-            &*self.wrapper,
-            Binding {
-                tenant: actor.tenant,
-                secret: id,
-                kind,
-            },
-            &sealed,
-        )
-        .map_err(|e| StoreError::Internal(format!("a stored secret would not open: {e}")))?;
-        let text = std::str::from_utf8(&plaintext)
-            .map_err(|_| StoreError::Internal("a stored secret is not text".into()))?;
-        let value = SecretValue::parse(text)
-            .map_err(|e| StoreError::Internal(format!("a stored secret is malformed: {e}")))?;
+        let value = self.open_row(actor.tenant, id, kind, &row)?;
         Ok(LoadedSecret {
             id,
             kind,
             label,
             value,
+        })
+    }
+
+    /// Hand a live secret to a service, in plaintext, for one purpose. The only method that returns a
+    /// value outside a provider check. The row is locked while it is opened and stamped, so a
+    /// concurrent revocation can never race past a lease that already read the value.
+    ///
+    /// The audit entry is `used` with `lease <service> <purpose>`; no outbox event is written because
+    /// the event vocabulary has no `used` and every model call would otherwise add noise to the feed.
+    pub async fn lease(&self, actor: LeaseActor, kind: SecretKind) -> Result<Lease, StoreError> {
+        // A workload token already limits both names; this keeps a direct caller from breaking the
+        // audit chain's 120-character detail constraint with a forged pair.
+        let detail = format!("lease {} {}", actor.service, actor.purpose);
+        if detail.len() > 120 {
+            return Err(StoreError::Internal(
+                "a lease names a service or purpose too long for the audit chain".into(),
+            ));
+        }
+        let now = self.now();
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        let row = sqlx::query(
+            "SELECT id, ciphertext, value_nonce, wrapped_dek, dek_nonce, key_version \
+             FROM vault.secrets WHERE kind = $1 AND revoked_at IS NULL FOR UPDATE",
+        )
+        .bind(kind.as_str())
+        .fetch_optional(tx.conn())
+        .await?;
+        let Some(row) = row else {
+            return Err(StoreError::NotFound);
+        };
+        let id = SecretId::from_uuid(row.try_get("id")?);
+        let value = self.open_row(actor.tenant, id, kind, &row)?;
+        let updated =
+            sqlx::query("UPDATE vault.secrets SET last_used_at = $2 WHERE id = $1 AND revoked_at IS NULL")
+                .bind(id.as_uuid())
+                .bind(now)
+                .execute(tx.conn())
+                .await?;
+        if updated.rows_affected() != 1 {
+            return Err(StoreError::Internal(
+                "the secret was revoked while it was being leased".into(),
+            ));
+        }
+        append_audit(&mut tx, now, AuditAction::Used, actor.user, id, &detail).await?;
+        tx.commit().await?;
+        Ok(Lease {
+            kind,
+            value,
+            expires_at: now + Duration::seconds(LEASE_SECONDS),
         })
     }
 
@@ -528,6 +596,31 @@ impl VaultStore {
         .await?;
         tx.commit().await?;
         Ok(now)
+    }
+
+    /// Decrypt one row and check the plaintext is a value. The decrypted buffer is wiped on drop.
+    fn open_row(
+        &self,
+        tenant: TenantId,
+        id: SecretId,
+        kind: SecretKind,
+        row: &PgRow,
+    ) -> Result<SecretValue, StoreError> {
+        let sealed = sealed_from(row)?;
+        let plaintext = Envelope::open(
+            &*self.wrapper,
+            Binding {
+                tenant,
+                secret: id,
+                kind,
+            },
+            &sealed,
+        )
+        .map_err(|e| StoreError::Internal(format!("a stored secret would not open: {e}")))?;
+        let text = std::str::from_utf8(&plaintext)
+            .map_err(|_| StoreError::Internal("a stored secret is not text".into()))?;
+        SecretValue::parse(text)
+            .map_err(|e| StoreError::Internal(format!("a stored secret is malformed: {e}")))
     }
 
     fn seal(

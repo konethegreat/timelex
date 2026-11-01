@@ -10,6 +10,8 @@
 //! * `TIMELEX_VAULT_DATABASE_URL`: connection URL for the `svc_vault` role (serve).
 //! * `TIMELEX_MIGRATOR_DATABASE_URL`: connection URL for the `timelex_migrator` role (migrate).
 //! * `TIMELEX_GATEWAY_PUBLIC_KEYS`: `kid=base64,...` public keys the gateway signs with (serve).
+//! * `TIMELEX_WORKLOAD_PUBLIC_KEYS`: `service:kid=base64[,...]` keys of the services allowed to
+//!   lease a secret, e.g. `mcp-host:mh1=...` (serve). Absent means no lease is possible.
 //! * `TIMELEX_VAULT_MASTER_KEY`: base64 of exactly 32 bytes, the key-encryption key (serve). Until a
 //!   KMS adapter lands (ADR-0004), this is the only thing that can unwrap a stored data key. Never
 //!   printed, never logged; rotate it only with a re-wrap migration.
@@ -25,7 +27,7 @@ use std::time::Duration;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use timelex_auth::Verifier;
+use timelex_auth::{Verifier, WorkloadVerifier};
 use timelex_db::TenantPool;
 use timelex_outbox::{JsonLinePublisher, Relay};
 use timelex_vault::LocalKeyWrapper;
@@ -79,6 +81,15 @@ async fn serve() -> Result<(), String> {
         .map_err(|e| format!("cannot connect to the database: {e}"))?;
     let verifier =
         Verifier::from_config("vault", &env("TIMELEX_GATEWAY_PUBLIC_KEYS")?).map_err(|e| e.to_string())?;
+    // Fail closed: a malformed value stops startup, and an absent one refuses every lease rather
+    // than trusting a caller by default.
+    let workload = match std::env::var("TIMELEX_WORKLOAD_PUBLIC_KEYS") {
+        Ok(config) => Some(WorkloadVerifier::from_config("vault", &config).map_err(|e| e.to_string())?),
+        Err(_) => {
+            println!("timelex-vault-service: no workload key set; leases are refused");
+            None
+        }
+    };
     let wrapper = Arc::new(LocalKeyWrapper::new(master_key()?));
     let validator = Arc::new(LiveValidator::new()?);
     if outbox_relay_enabled() {
@@ -99,7 +110,7 @@ async fn serve() -> Result<(), String> {
     println!("timelex-vault-service listening on http://{addr}");
     axum::serve(
         listener,
-        http::router(VaultStore::new(pool, wrapper), verifier, validator),
+        http::router(VaultStore::new(pool, wrapper), verifier, workload, validator),
     )
     .with_graceful_shutdown(async {
         let _ = tokio::signal::ctrl_c().await;

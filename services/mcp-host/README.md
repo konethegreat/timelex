@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | 🟡 model loop and MCP client implemented; lease and HTTP routes pending |
+| **Status** | 🟡 model loop, MCP client and vault lease implemented; HTTP workflow routes pending |
 | **Language** | Rust |
 | **Phase** | 1–4 |
 | **Owns data** | `host` schema: workflow definitions, runs, context-pack references, budgets, memory (confirmed corrections only) |
@@ -50,6 +50,20 @@ cargo test -p timelex-mcp
 ```
 32 tests: 23 server probes and 9 client tests against the in-repo stateless server and legacy/older stubs.
 
+## Vault lease (P1-13 increment 2, [ADR-0020](../../docs/adr/0020-workload-identity-and-leases.md))
+The key path is a real wire call, not an assumption that the caller has the key.
+
+- `VaultKeySource` holds this service's own Ed25519 key and builds a workload token per lease: `iss` `timelex-mcp-host`, `aud` `vault`, kind `workload`, the firm, the initiating user and a `LeasePurpose`. The vault trusts the key explicitly; nothing is shared with the gateway.
+- `LeasePurpose::ModelRun` is the only purpose. It maps to `anthropic_api_key` in both the client and the vault, so the host can ask for exactly one kind.
+- `lease()` posts to `/internal/v1/secrets/anthropic_api_key/lease` with no body and parses `{ kind, value, expiresAt }`. It accepts only the kind it asked for, checks the value through `SecretValue::parse`, and never logs the body.
+- `Lease` wraps the value in a zeroizing `SecretValue`, redacts it in `Debug` and carries `expiresAt`. The run must drop it at expiry or when it ends, whichever comes first; the vault keeps no copy to recall.
+- `LeaseError` is closed: `Unauthorized` (this key is not trusted), `Forbidden` (wrong purpose), `NotFound` (the firm has no live key), `Unavailable` (transport, `408`, `429`, `5xx`) and `Unusable` (any other status, a malformed body or the wrong kind). The vault's words and body never enter one.
+
+```
+cargo test -p timelex-mcp-host --test vault
+```
+5 tests against a stub vault on loopback that verifies the token exactly as the real one does: the method, path and claims; the returned value and expiry; `Debug` redaction; every status class; malformed and mismatched bodies; an unreachable vault; and a base URL that is not HTTP.
+
 ## Contract (not served yet)
 - **REST:** `/v1/workflows`, `/v1/runs`, `/v1/runs/{id}`, `/v1/budgets`
 - **MCP tools:** `list_workflows` (R), `run_workflow` (W), `get_run` (R); long runs use the MCP Tasks extension
@@ -57,11 +71,10 @@ cargo test -p timelex-mcp
 - **Events consumed:** `secret.revoked`, `activity.recorded`
 
 ## Key path
-The caller leases the tenant's `anthropic_api_key` from the vault (ADR-0004), builds an `AnthropicProvider` with the leased `SecretValue`, runs, and drops it; the value is wiped on drop and its `Debug` is redacted. The vault's wire lease (`/internal/v1/...`) lands with this first caller, with its own audit and contract tests, before any workflow can be triggered remotely.
+The caller uses a `VaultKeySource`, configured with this service's own key, to lease the tenant's `anthropic_api_key` for `model_run` ([ADR-0020](../../docs/adr/0020-workload-identity-and-leases.md)). The vault verifies the workload token, records a `used` audit entry naming the service and purpose, and returns the value once with a 60-second expiry. The caller builds an `AnthropicProvider` with the leased `SecretValue`, runs, and drops it; the value is wiped on drop and its `Debug` is redacted.
 
 ## Next
-1. Vault lease with audit and contract tests, and a lease-backed key source.
-2. The `host` schema, workflow definitions, `/v1/runs` and the three events (P3-06).
+1. The `host` schema, workflow definitions, `/v1/runs` and the three events (P3-06).
 
 ## Non-goals
 - No Sampling (deprecated); calls the model API directly
