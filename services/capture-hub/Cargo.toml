@@ -1,0 +1,37 @@
+[package]
+name = "timelex-capture-service"
+description = "TimeLex capture-hub: connectors turn raw signals into idempotent activity events."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = "0.1"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros", "json"] }
+time = { version = "0.3", features = ["serde-well-known"] }
+timelex-auth = { path = "../../crates/timelex-auth" }
+timelex-db = { path = "../../crates/timelex-db" }
+timelex-identity = { path = "../../crates/timelex-identity" }
+timelex-outbox = { path = "../../crates/timelex-outbox" }
+timelex-telemetry = { path = "../../crates/timelex-telemetry" }
+timelex-types = { path = "../../crates/timelex-types" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+tracing = "0.1"
+uuid = "1"
+
+[dev-dependencies]
+timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }
+time = { version = "0.3", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+uuid = { version = "1", features = ["v4"] }

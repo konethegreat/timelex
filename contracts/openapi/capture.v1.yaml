@@ -1,0 +1,235 @@
+# Written by Kone Tshivhinda & Claude
+# Capture service contract v1 (draft). Contract-first: this file leads the code (ADR-0001).
+# Design: ADR-0021 (idempotent ingest, connector cursors, replay). Events: contracts/events/.
+openapi: 3.1.0
+info:
+  title: TimeLex Capture
+  version: 0.1.0
+  summary: Idempotent ingest of activity events from connectors and the desktop agent (pre-alpha).
+  description: |
+    Pre-alpha. The capture hub normalises a raw work signal into one immutable activity event
+    (ADR-0006) and stores it exactly once. A connector fetches from its own system, builds the event
+    and posts it here; the service decides whether the signal is new. Real Microsoft 365 and Google
+    connectors arrive with P2-03 and P2-05; manual quick capture with P2-08.
+
+    **Why a caller can post the same event twice.** Every event carries a canonical `id` derived from
+    the firm, the source system, the source id and the start instant ([the id rule](../events/README.md)).
+    Delivering the same signal twice produces the same `id`, so the second delivery finds the stored
+    row and changes nothing: the event is stored once and `activity.recorded` is published once
+    (ADR-0014). A delivery that claims a new `id` is rejected unless the `id` is the one its content
+    implies, so a sender cannot force a second copy.
+
+    **Callers.** Only the gateway reaches this service, over a private interface, with an *internal
+    token* signed by the gateway (ADR-0012). Every ingest requires a token of kind `principal` whose
+    holder has the `capture:write` permission; the firm, user and permissions come from the verified
+    token, never from the request. A token of the wrong kind or without the permission is 403. The
+    event's `tenantId` must name the caller's firm and its `actor.userId` must be the caller (400 and
+    403 respectively).
+
+    **Not routed yet.** The gateway does not expose `/v1/events` until the first public caller arrives
+    (P2-08). Until then this contract describes the service's private interface, which the connectors
+    and the desktop agent use directly in development.
+
+    **Versioning.** `schemaVersion` is the event's version, not this contract's. This build reads
+    every `1.x`; a `2.x` event is a 400. See [event contracts](../events/README.md).
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8084
+    description: Local development (private interface; the gateway fronts this in every other environment)
+tags:
+  - name: events
+    description: Record an activity event exactly once.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and database reachability
+      description: Answers 200 when the service is up and can reach its database, otherwise 503. No credentials; reachable only on the private interface.
+      security: []
+      responses:
+        "200":
+          description: Up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+        "503":
+          description: The database cannot be reached.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /v1/events:
+    post:
+      tags: [events]
+      operationId: ingestEvent
+      summary: Record one activity event (idempotent)
+      description: |
+        Stores the event if its `id` has not been seen for this firm, and answers 201. If the id is
+        already stored, answers 200 with `created: false` and changes nothing: no second row and no
+        second `activity.recorded`. The signal is never edited, so a later delivery with different
+        content but the same id is still a duplicate; a sender that wants to correct a signal
+        publishes a new event that cites the earlier one.
+
+        The `id` must equal the canonical id of the event's `tenantId`, `source.system`,
+        `source.sourceId` and `startedAt` (whole seconds); anything else is a 400. The event body must
+        satisfy [`activity-event.schema.json`](../events/activity-event.schema.json) for a supported
+        major; unknown optional properties are ignored (P2-01).
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: capture:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivityEvent" }
+      responses:
+        "201":
+          description: The event was stored for the first time.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        "200":
+          description: The same signal was delivered before; nothing changed.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+components:
+  securitySchemes:
+    internalToken:
+      type: http
+      scheme: bearer
+      description: A short-lived token signed by the gateway (ADR-0012, `contracts/internal-auth.md`). Never a tenant API key.
+  schemas:
+    ActivityEvent:
+      type: object
+      description: One observed work signal. Mirrors [`activity-event.schema.json`](../events/activity-event.schema.json); that file is the normative definition and its versioning rules apply.
+      required: [schemaVersion, id, tenantId, source, kind, actor, startedAt, endedAt, capturedAt, privacy]
+      properties:
+        schemaVersion:
+          type: string
+          pattern: "^1\\.[0-9]+$"
+          description: The event's major.minor version. This build reads every 1.x.
+        id:
+          type: string
+          pattern: "^ae_[0-9a-f]{16,64}$"
+          description: Canonical id of the signal; the same signal always has the same id.
+        tenantId: { type: string, pattern: "^tn_[0-9A-Za-z]{8,64}$" }
+        source:
+          type: object
+          required: [system, sourceId]
+          properties:
+            system:
+              type: string
+              enum: [m365_mail, m365_calendar, m365_teams, google_mail, google_calendar, desktop_agent, manual, import]
+            sourceId:
+              type: string
+              description: Id of the signal in the originating system.
+              minLength: 1
+              maxLength: 512
+        kind:
+          type: string
+          enum: [email_sent, email_received, meeting, call, document_edit, document_view, web_research, desktop_focus, manual_entry]
+        actor:
+          type: object
+          required: [userId]
+          properties:
+            userId: { type: string, pattern: "^us_[0-9A-Za-z]{8,64}$" }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        capturedAt: { type: string, format: date-time }
+        subject:
+          type: object
+          description: Metadata about the signal. Titles and addresses may be absent under a metadata-only or redacted privacy tier.
+          properties:
+            title: { type: string, maxLength: 500 }
+            threadRef: { type: string, maxLength: 512 }
+            documentRef: { type: string, maxLength: 512 }
+            participants:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                required: [role, domain]
+                properties:
+                  role: { type: string, enum: [from, to, cc, attendee, organizer] }
+                  domain: { type: string, maxLength: 255 }
+                  address: { type: string, maxLength: 320 }
+        contentRef:
+          type: string
+          maxLength: 512
+          description: Object-storage key of redacted content, present only when privacy.contentCaptured is true.
+        privacy:
+          type: object
+          required: [contentCaptured, redactionApplied]
+          properties:
+            contentCaptured: { type: boolean }
+            redactionApplied: { type: boolean }
+    IngestResult:
+      type: object
+      required: [id, created]
+      properties:
+        id:
+          type: string
+          description: The event's canonical id, echoed so a sender can record what the service kept.
+        created:
+          type: boolean
+          description: True when this delivery stored the event; false when it was already stored.
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+  responses:
+    Invalid:
+      description: The event is malformed, names an unsupported major, or carries an id that does not match its content.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthorized:
+      description: Missing, malformed or invalid internal token. Always the same body.
+      headers:
+        WWW-Authenticate:
+          description: Always `Bearer`.
+          schema: { type: string, const: Bearer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: A valid token of the wrong kind, one without `capture:write`, or an event whose actor is not the caller.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooLarge:
+      description: The request body exceeds 64 KiB.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Internal:
+      description: The capture service or its database failed. `detail` is never included.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }

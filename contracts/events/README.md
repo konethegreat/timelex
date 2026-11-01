@@ -11,6 +11,31 @@ Every event has a `schemaVersion` of the form `MAJOR.MINOR`, for example `1.0`. 
 | [`activity-event.schema.json`](activity-event.schema.json) | 1.0 | [`activity-event.v1.0.json`](../examples/activity-event.v1.0.json) |
 | [`secret-event.schema.json`](secret-event.schema.json) | 1.0 | [`secret-event.v1.0.json`](../examples/secret-event.v1.0.json) |
 
+## The id of an activity event
+
+An activity event's `id` is not random. It is derived from the signal the event describes, so a connector that delivers the same signal twice produces the same id and capture-hub writes one row. `activity_event_id` in `timelex-types` is the reference implementation; producers and the server must compute the same value.
+
+The input is exactly four facts:
+
+1. `tenantId`, as written in the event (for example `tn_0191a2b3c4d57e6f8a9b0c1d2e3f4a5b`).
+2. `source.system`, in its contract spelling (for example `m365_mail`).
+3. `source.sourceId`, the id in the originating system.
+4. `startedAt`, as whole seconds since the Unix epoch; any sub-second part is truncated.
+
+Kind, actor, capture time, subject and privacy are observations about the signal, not its identity, so they do not take part. The digest is:
+
+```text
+SHA-256(
+  "timelex/activity-event/id/v1\0" ||
+  u32_be(len(tenantId))        || tenantId ||
+  u32_be(len(source.system))   || source.system ||
+  u32_be(len(source.sourceId)) || source.sourceId ||
+  i64_be(startedAt_unix_seconds)
+)
+```
+
+The id is `ae_` followed by the first 16 bytes of that digest as lowercase hex (32 characters). The lengths are what stop a boundary from shifting: tenant `ab` with source id `c` is not tenant `a` with source id `bc`. Changing this layout would change every id, so it combines with the major version: it is fixed for all `1.x` events and a different layout needs a new major.
+
 ## Rules within a major
 
 These apply while the major is 1. A change that breaks any of them needs a new major.

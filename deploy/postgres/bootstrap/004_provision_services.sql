@@ -3,3 +3,4 @@
 -- ("build only what the next service needs", PHASES.md). host follows with P1-13.
 CALL platform.provision_service('identity');
 CALL platform.provision_service('vault');
+CALL platform.provision_service('capture');

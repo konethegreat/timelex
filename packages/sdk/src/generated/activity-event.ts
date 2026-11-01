@@ -11,7 +11,7 @@ export interface ActivityEvent {
    */
   schemaVersion: string;
   /**
-   * Idempotent id: hex digest of tenant + source.system + source.sourceId + startedAt. Delivering the same signal twice yields the same id.
+   * Idempotent id: 16-byte SHA-256 digest of tenant + source.system + source.sourceId + startedAt, lowercase hex. Delivering the same signal twice yields the same id. The exact byte layout is in contracts/events/README.md.
    */
   id: string;
   tenantId: string;

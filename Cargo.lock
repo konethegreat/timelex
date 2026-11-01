@@ -3419,6 +3419,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-capture-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "time",
+ "timelex-auth",
+ "timelex-db",
+ "timelex-identity",
+ "timelex-outbox",
+ "timelex-telemetry",
+ "timelex-types",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "timelex-db"
 version = "0.1.0"
 dependencies = [
@@ -3563,6 +3586,7 @@ dependencies = [
  "jsonschema",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "time",
 ]
 

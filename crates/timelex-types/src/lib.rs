@@ -6,10 +6,22 @@
 //! a change to either side that breaks the other fails CI (ADR-0002 rule 3).
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 
 /// Contract version implemented by this crate.
 pub const ACTIVITY_EVENT_SCHEMA_VERSION: &str = "1.0";
+
+/// Domain separation for the v1 activity-event id. The trailing NUL cannot appear in any input.
+const ACTIVITY_EVENT_ID_DOMAIN: &[u8] = b"timelex/activity-event/id/v1\0";
+
+/// Whether a `schemaVersion` is a 1.x activity-event version this build can read. A newer minor is
+/// accepted: readers ignore fields they do not know (see `contracts/events/README.md`).
+pub fn supports_activity_schema_version(version: &str) -> bool {
+    version
+        .strip_prefix("1.")
+        .is_some_and(|minor| !minor.is_empty() && minor.bytes().all(|b| b.is_ascii_digit()))
+}
 
 /// Which system produced the signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +37,22 @@ pub enum SourceSystem {
     Import,
 }
 
+impl SourceSystem {
+    /// The contract's spelling, also the input to the id rule.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::M365Mail => "m365_mail",
+            Self::M365Calendar => "m365_calendar",
+            Self::M365Teams => "m365_teams",
+            Self::GoogleMail => "google_mail",
+            Self::GoogleCalendar => "google_calendar",
+            Self::DesktopAgent => "desktop_agent",
+            Self::Manual => "manual",
+            Self::Import => "import",
+        }
+    }
+}
+
 /// What kind of work the signal represents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -38,6 +66,23 @@ pub enum ActivityKind {
     WebResearch,
     DesktopFocus,
     ManualEntry,
+}
+
+impl ActivityKind {
+    /// The contract's spelling.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::EmailSent => "email_sent",
+            Self::EmailReceived => "email_received",
+            Self::Meeting => "meeting",
+            Self::Call => "call",
+            Self::DocumentEdit => "document_edit",
+            Self::DocumentView => "document_view",
+            Self::WebResearch => "web_research",
+            Self::DesktopFocus => "desktop_focus",
+            Self::ManualEntry => "manual_entry",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +166,46 @@ impl ActivityEvent {
         let secs = (self.ended_at - self.started_at).whole_seconds();
         u64::try_from(secs).unwrap_or(0)
     }
+
+    /// The id this event's content requires. A producer and capture-hub both compute it, so the same
+    /// signal delivered twice lands on the same row.
+    pub fn expected_id(&self) -> String {
+        activity_event_id(&self.tenant_id, &self.source, self.started_at)
+    }
+}
+
+/// The canonical, idempotent id of one activity event.
+///
+/// SHA-256 over a domain separator and the four facts that identify a signal, each written as a
+/// 4-byte big-endian length followed by its bytes, then `startedAt` as an 8-byte big-endian Unix
+/// timestamp in whole seconds (sub-second precision is truncated). The first 16 bytes, lowercase hex,
+/// carry the `ae_` prefix.
+///
+/// Length prefixes mean no boundary can shift: tenant `ab` + source `c` is not tenant `a` + source
+/// `bc`. Kind, actor and capture time are observations about the signal, not its identity, so they do
+/// not take part. The exact rule is stated in `contracts/events/README.md`; changing it would change
+/// every id, so it is versioned with the contract.
+pub fn activity_event_id(tenant_id: &str, source: &Source, started_at: OffsetDateTime) -> String {
+    let mut h = Sha256::new();
+    h.update(ACTIVITY_EVENT_ID_DOMAIN);
+    for part in [tenant_id, source.system.as_str(), source.source_id.as_str()] {
+        let bytes = part.as_bytes();
+        h.update(u32::try_from(bytes.len()).unwrap_or(u32::MAX).to_be_bytes());
+        h.update(bytes);
+    }
+    h.update(started_at.unix_timestamp().to_be_bytes());
+    let digest = h.finalize();
+    format!("ae_{}", hex(&digest[..16]))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0x0f) as usize] as char);
+    }
+    out
 }
 
 /// Contract version of the secret events in `contracts/events/secret-event.schema.json`.
@@ -228,6 +313,166 @@ impl SecretEvent {
                 user_id: user_id.into(),
             },
             data,
+        }
+    }
+}
+
+#[cfg(test)]
+mod id_tests {
+    use super::*;
+    use serde_json::Value;
+    use time::macros::datetime;
+
+    const EXAMPLE: &str = include_str!("../../../contracts/examples/activity-event.json");
+
+    fn example() -> ActivityEvent {
+        serde_json::from_str(EXAMPLE).expect("example deserialises")
+    }
+
+    #[test]
+    fn the_same_signal_always_has_the_same_id() {
+        let e = example();
+        assert_eq!(e.expected_id(), e.expected_id());
+        assert_eq!(
+            activity_event_id(&e.tenant_id, &e.source, e.started_at),
+            e.expected_id()
+        );
+    }
+
+    #[test]
+    fn the_id_is_the_documented_shape() {
+        let id = example().expected_id();
+        assert!(id.starts_with("ae_"), "{id}");
+        let hex = id.strip_prefix("ae_").unwrap();
+        assert_eq!(hex.len(), 32, "16 bytes of SHA-256, lowercase hex");
+        assert!(hex
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    }
+
+    #[test]
+    fn the_golden_id_is_stable() {
+        // Pinned so an accidental change to the encoding (field order, separator, time unit)
+        // breaks this test. The value was computed independently from the documented layout.
+        assert_eq!(example().expected_id(), "ae_819918eaf3953eb60573f889187a7b92");
+    }
+
+    #[test]
+    fn changing_any_of_the_four_facts_changes_the_id() {
+        let base = example();
+        let base_id = base.expected_id();
+
+        let mut other_tenant = base.clone();
+        other_tenant.tenant_id = "tn_other0002".into();
+        assert_ne!(other_tenant.expected_id(), base_id, "tenant");
+
+        let mut other_system = base.clone();
+        other_system.source.system = SourceSystem::GoogleMail;
+        assert_ne!(other_system.expected_id(), base_id, "source system");
+
+        let mut other_source = base.clone();
+        other_source.source.source_id = "AAMkAGI2another-message-id".into();
+        assert_ne!(other_source.expected_id(), base_id, "source id");
+
+        let mut other_start = base.clone();
+        other_start.started_at += time::Duration::seconds(1);
+        assert_ne!(other_start.expected_id(), base_id, "started at");
+    }
+
+    #[test]
+    fn facts_outside_the_rule_do_not_change_the_id() {
+        let base = example();
+        let base_id = base.expected_id();
+
+        let mut other_kind = base.clone();
+        other_kind.kind = ActivityKind::Meeting;
+        assert_eq!(other_kind.expected_id(), base_id, "kind is not part of the rule");
+
+        let mut other_capture = base.clone();
+        other_capture.captured_at += time::Duration::seconds(90);
+        assert_eq!(other_capture.expected_id(), base_id, "capture time is not either");
+
+        let mut other_id = base.clone();
+        other_id.id = "ae_00000000000000000000000000000000".into();
+        assert_eq!(
+            other_id.expected_id(),
+            base_id,
+            "the stored id is replaced, not read"
+        );
+    }
+
+    #[test]
+    fn sub_second_precision_is_truncated_to_whole_seconds() {
+        let base = example();
+        let mut rounded = base.clone();
+        rounded.started_at = rounded
+            .started_at
+            .replace_nanosecond(999_999_000)
+            .expect("valid nanosecond");
+        assert_eq!(rounded.expected_id(), base.expected_id());
+    }
+
+    #[test]
+    fn fields_are_length_prefixed_so_boundaries_cannot_shift() {
+        // "ab" + "c" and "a" + "bc" must not produce the same digest.
+        let started = datetime!(2026-10-20 08:12:00 UTC);
+        let a = activity_event_id(
+            "tn_ab",
+            &Source {
+                system: SourceSystem::Manual,
+                source_id: "c".into(),
+            },
+            started,
+        );
+        let b = activity_event_id(
+            "tn_a",
+            &Source {
+                system: SourceSystem::Manual,
+                source_id: "bc".into(),
+            },
+            started,
+        );
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn the_generated_id_satisfies_the_contract_pattern() {
+        let schema: Value = serde_json::from_str(include_str!(
+            "../../../contracts/events/activity-event.schema.json"
+        ))
+        .unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        let mut value = serde_json::to_value(example()).unwrap();
+        value["id"] = Value::String(example().expected_id());
+        assert!(validator.is_valid(&value), "{value}");
+    }
+
+    #[test]
+    fn every_kind_has_the_contract_spelling() {
+        use ActivityKind::*;
+        for kind in [
+            EmailSent,
+            EmailReceived,
+            Meeting,
+            Call,
+            DocumentEdit,
+            DocumentView,
+            WebResearch,
+            DesktopFocus,
+            ManualEntry,
+        ] {
+            let json = serde_json::to_value(kind).unwrap();
+            assert_eq!(json, Value::String(kind.as_str().into()), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn only_a_1_x_version_is_supported() {
+        for good in ["1.0", "1.1", "1.42"] {
+            assert!(supports_activity_schema_version(good), "{good}");
+        }
+        for bad in ["", "1", "1.", "1.x", "2.0", "0.9", " 1.0", "1.0.1", "v1.0"] {
+            assert!(!supports_activity_schema_version(bad), "{bad:?}");
         }
     }
 }
