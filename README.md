@@ -68,7 +68,7 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 contracts/    OpenAPI, JSON Schema (events), MCP tool catalogue: the source of truth
-crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP transport), timelex-telemetry (traces, metrics, redacted logs)
+crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP server adapter and client), timelex-telemetry (traces, metrics, redacted logs)
 services/     One folder per service; gateway, identity, vault and the mcp-host model loop are built, the rest are specified (README per service)
 workers/      Python workers (redaction now; OCR/ML later). No business rules.
 packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)

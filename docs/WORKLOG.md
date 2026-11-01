@@ -4,7 +4,30 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-13 increment 1 — the model loop, and a Rand cap that really stops
+## 2026-11-01 (latest): P1-13 increment 3 — the host can call an MCP server
+
+**Trigger:** the model loop could spend a firm's Rand, but nothing connected it to the tools a workflow needs. P1-08 verified the server side of `rmcp`; the client side was the missing half of P1-13, and the SDK's client defaults include a legacy fallback and session recovery that TimeLex must never use.
+
+**Done**
+- [`crates/timelex-mcp/src/client.rs`](../crates/timelex-mcp/src/client.rs) adds `ClientTarget`, `McpClient`, `TargetError` and `ClientError` ([ADR-0019](adr/0019-mcp-client-rules.md)). A target is validated before a connection exists: absolute URL, `https` required, plain `http` only for `127.0.0.0/8`, `::1` or `localhost`, and no username, password or fragment.
+- `McpClient::connect` uses `ClientLifecycleMode::Discover` with `[2026-07-28]` only. It never sends `initialize` and never falls back: a legacy-only server fails `Startup`, an older-only server fails `Protocol`. The transport is stateless and `reinit_on_expired_session` is off, so a 404 is surfaced rather than hidden by a re-handshake.
+- The bearer token is the only credential path: validated as printable ASCII, stored in a zeroizing wrapper inside the target, sent only as `Authorization: Bearer …`, and redacted from `Debug`. No URL carries it.
+- `list_tools` and `call_tool` return finished results. `call_tool_once` is used deliberately; `input_required` and task replies are refused as `InputRequired` and `Task`, because the host has no MRTR input source and no task poller yet.
+- `ClientError` is closed and quiet: `Startup`, `Protocol`, `Transport`, `Rpc { code }`, `InputRequired`, `Task`, `Closed`. The server's message, body and URL never enter the error.
+- Tests: 9 in [`tests/client.rs`](../crates/timelex-mcp/tests/client.rs) against the in-repo stateless server and two stubs. They prove discovery, `tools/list`, `tools/call`, no session header, the bearer on every request with the token in no other header, a legacy-only peer refused without `initialize`, and an older-only peer refused. Together with the 23 existing server probes that is 32 tests in the crate.
+- Dependencies: `url` for URL parsing and `zeroize` for the token; `rmcp` gains the `client`, `transport-streamable-http-client-reqwest` and `reqwest` (rustls) features. The exact `=3.6.0` pin is unchanged.
+- Docs: ADR-0019, INDEX, TASKS, ARCHITECTURE, the root README.
+
+**Decisions and why**
+- **Discovery only, no `Auto`.** `Auto` probes and then silently falls back to `initialize` after ten seconds or a legacy error. A server must never negotiate TimeLex down.
+- **No session recovery.** TimeLex servers are stateless and never issue a session; a 404 means a wrong route, and re-handshaking would turn a routing bug into a working-but-different connection.
+- **Plain HTTP only on loopback.** A bearer token and tool arguments are not something a "private network" assumption makes safe.
+- **Refuse MRTR and tasks for now.** Both need workflow state and a human approval surface owned by P3-06/P2-11. An explicit refusal is testable; a hang is not.
+- **Keep only the JSON-RPC code.** Remote text in an error is remote text in a log and possibly in a prompt, the same rule ADR-0018 applies to providers.
+
+**Next:** the vault lease (first caller of `/internal/v1/...`, with audit and contract tests) and a lease-backed key source; then the `host` schema and workflow routes (P3-06). P1-12 is still branch protection and needs a shared repository setting.
+
+## 2026-11-01: P1-13 increment 1 — the model loop, and a Rand cap that really stops
 
 **Trigger:** `mcp-host` is the only Phase 1 component with no code, and it is where a firm's own Anthropic money is spent. Before any workflow can run, the loop needs a provider boundary, exact cost accounting and a ladder that cannot spend past its authorization.
 
