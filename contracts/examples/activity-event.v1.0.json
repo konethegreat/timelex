@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "id": "ae_3f9c1b7a5d2e48a0b6c4d1e2f3a49587",
+  "tenantId": "tn_demo0001",
+  "source": { "system": "m365_mail", "sourceId": "AAMkAGI2synthetic-message-id" },
+  "kind": "email_sent",
+  "actor": { "userId": "us_demo0001" },
+  "startedAt": "2026-10-20T08:12:00Z",
+  "endedAt": "2026-10-20T08:20:00Z",
+  "capturedAt": "2026-10-20T08:21:03Z",
+  "subject": {
+    "title": "Draft settlement agreement: comments",
+    "threadRef": "AAQkAGI2synthetic-thread-id",
+    "participants": [
+      { "role": "from", "domain": "example-firm.test", "address": "fee.earner@example-firm.test" },
+      { "role": "to", "domain": "client.example", "address": "client.contact@client.example" }
+    ]
+  },
+  "privacy": { "contentCaptured": false, "redactionApplied": false }
+}

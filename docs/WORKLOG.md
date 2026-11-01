@@ -4,7 +4,26 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-13 increment 2 — the host leases its key, and the vault audits the use
+## 2026-11-01 (latest): P2-01 — event contract v1, and the versioning rules that make it true
+
+**Trigger:** the activity-event schema and its Rust mirror existed since the walking skeleton, but P2-01 asked for versioning rules and a backward-compatibility test. The old contract promised that "additive changes bump the minor" while `additionalProperties: false` and serde's `deny_unknown_fields` made every reader reject a newer minor. During the first rolling deploy, an old consumer would have thrown away valid events. A promise the schema contradicts is worse than no promise.
+
+**Done**
+- [`contracts/events/README.md`](../contracts/events/README.md) sets the v1 rules: only optional properties may be added in a minor; readers ignore unknown properties at every level; required properties, types, meanings and constraints are fixed; enum vocabularies are fixed; events are immutable; nothing reaches the stream invalid; each release freezes an example; and the tests prove both directions. A breaking change is a new major file (`activity-event.v2.schema.json`) while v1 stays readable for stored events.
+- The released examples are frozen as [`activity-event.v1.0.json`](../contracts/examples/activity-event.v1.0.json) and [`secret-event.v1.0.json`](../contracts/examples/secret-event.v1.0.json). `examples/<name>.json` remains the current example used by the docs and the SDK.
+- Both [event schemas](../contracts/events/activity-event.schema.json) drop `additionalProperties: false` at every object level, and the matching Rust types drop `deny_unknown_fields`. Unknown properties are ignored on read and dropped on write; they are never guessed at or copied forward.
+- [`crates/timelex-types`](../crates/timelex-types/src/lib.rs) grows from 7 to 17 tests. New ones: a frozen 1.0 event still validates and deserialises; a 1.1 event with unknown fields at the top level, in `source`, in `subject`, in a participant and in `privacy` validates and deserialises, and the known fields survive; the same for secret events. Missing required fields, a bad `kind` and a `2.0` major are still rejected.
+- The SDK types are regenerated. The generated `ActivityEvent` now carries index signatures, which is how the TypeScript contract expresses the same tolerance.
+
+**Decisions and why**
+- **Readers tolerate, writers do not add required fields.** The outbox delivers at least once and services roll out one at a time, so an old consumer must survive a newer minor. Tolerating unknown fields is the only way the minor rule is true in practice. A producer still cannot add a required field, because a missing one breaks old readers.
+- **Enum values are a new major, not a new minor.** A reader that meets an unknown `kind` or `system` cannot interpret it honestly; silently skipping would hide billable work. The v1 vocabulary already names every planned capture source, so v2 is a deliberate cost when a genuinely new meaning arrives.
+- **Frozen examples rather than a second schema.** The test reads the bytes that were actually released, so editing history to fit a new schema fails CI. A consumer-only schema would test a document nobody ships.
+- **No producer-side strict copy of the schema.** Producers construct typed events, so they cannot emit unknown fields; a second schema would only add a file to keep in step.
+
+**Next:** P2-02, the `capture-hub` framework (connector trait, idempotent ingest, replay). P1-12 remains branch protection and needs a shared repository setting.
+
+## 2026-11-01: P1-13 increment 2 — the host leases its key, and the vault audits the use
 
 **Trigger:** the model loop and the MCP client were done, but the host still had no way to obtain the firm's Anthropic key. ADR-0018 point 8 said the key is a per-run lease, and the vault's ADR-0004 lease had been waiting for its first caller. The blocker was identity: a background host has no user session, and ADR-0012 makes the gateway the only issuer of user tokens.
 
