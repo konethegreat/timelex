@@ -46,7 +46,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 | `insights` | Python | Utilisation, realisation, WIP ageing, forecasting | read models | 8 | ⬜ |
 
 Workers: [`workers/py-worker`](../workers/py-worker) (redaction ✅; OCR, embeddings, calibration planned).
-Clients: `packages/sdk` (TS stub ✅), web app (Phase 4–5), Outlook add-in (Phase 4), `plugin/` (manifest ✅).
+Clients: `packages/sdk` (typed client ✅; gateway, identity, vault and activity-event types are generated from `contracts/` by `tools/sdk-gen`), web app (Phase 4–5), Outlook add-in (Phase 4), `plugin/` (manifest ✅).
 Connectors for other practice systems live under `connectors/` behind a `PracticeSystemAdapter` ([ADR-0009](adr/0009-ghostpractice-interop-strategy.md)).
 
 ## Core data flow (time)

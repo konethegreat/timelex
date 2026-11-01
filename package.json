@@ -1,9 +1,11 @@
 {
   "name": "timelex-monorepo",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "tools/sdk-gen"],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "generate:sdk": "npm run generate --workspace @timelex/sdk-gen",
+    "check:sdk": "npm run generate --workspace @timelex/sdk-gen -- --check",
     "test": "npm run test --workspaces --if-present"
   },
   "author": "Kone Tshivhinda",

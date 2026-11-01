@@ -4,7 +4,25 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-14 audit chains — one verifier for every service
+## 2026-11-01 (latest): P1-09 SDK types generated from the contracts, drift fails CI
+**Trigger:** the SDK's `Health`, `Meta` and `ActivityEvent` were typed by hand. A contract change that nobody mirrored would compile and ship, and the first sign of trouble would be a runtime mismatch.
+
+**Done**
+- [`tools/sdk-gen`](../tools/sdk-gen) is a private workspace with one script, `generate.mjs`. It renders `packages/sdk/src/generated/gateway.ts`, `identity.ts` and `vault.ts` from `contracts/openapi/*.v1.yaml` with `openapi-typescript` 7.13.0, and `activity-event.ts` from `contracts/events/activity-event.schema.json` with `json-schema-to-typescript` 16.0.0. Every file carries a "do not edit" header naming its source.
+- The generator also removes stale generated files (only ones that carry its header) and supports `--check`, which regenerates in memory and exits 1 on a changed, missing or stale file without touching the tree.
+- `packages/sdk/src/types.ts` now derives `Health` and `Meta` from the generated gateway paths and re-exports the generated `ActivityEvent`; the hand-written copies are gone. `packages/sdk/src/index.ts` exports `GatewayPaths`, `IdentityPaths`, `VaultPaths` and the matching `operations` and `components` types.
+- Root scripts `npm run generate:sdk` and `npm run check:sdk`; the TypeScript CI job runs `check:sdk` between build and tests.
+- Verified: `check:sdk` failed before generation (four missing files), passed after; editing `gateway.ts` and adding a stale `old.ts` each made it exit 1; regenerating restored an identical file and removed the stale one. Build (TypeScript 7), the three SDK tests and the link checker pass.
+
+**Decisions and why**
+- **The generator gets its own TypeScript.** `openapi-typescript` peer-depends on TypeScript 5 and uses the classic compiler API; TypeScript 7 ships a different API, so installing it into the SDK workspace fails with `ERESOLVE` and forcing the peer would crash at generation time. A private workspace pinned to TypeScript 5.9.3 keeps the SDK on 7 and makes the constraint explicit instead of hiding it in an install flag.
+- **The event schema is generated too.** It is JSON Schema rather than OpenAPI, but it is a contract with a hand-mirrored type and a golden example; leaving it manual would recreate the same drift risk for the event that every derived record cites.
+- **Drift is checked by regeneration, not by `git diff`.** The check works on a dirty tree, on Windows checkouts with different line endings (comparison normalises CRLF) and in a fresh clone, and it reports exactly which contract file disagrees.
+- **Generated files are committed.** Consumers and reviewers can read the types without running Node, and the drift check has a baseline to compare against.
+
+**Next:** generate the secret-event schema when the SDK exposes secret events, and add the generator's output check to `tools/new-service` (P1-11) so a new service starts with a contract-locked client. P1-07 compose and P1-10 telemetry remain the other Phase 1 gaps.
+
+## 2026-11-01: P1-14 audit chains — one verifier for every service
 **Trigger:** the vault grew a tamper-evident `secret_audit` chain in P1-05, but the hashing and checking lived inside the vault domain crate. The time ledger (P4-01), autonomy decisions and billing will all owe an audit chain, and three copies of a hash layout is how a chain stops being trustworthy.
 
 **Done**
