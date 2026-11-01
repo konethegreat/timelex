@@ -69,6 +69,9 @@ manual quick-capture ────────┘          │ outbox → bus
 ## Events and the outbox
 A service writes the event envelope into `platform.outbox` in the same transaction as the state change it describes. A relay claims undelivered rows, publishes them at least once, and marks them; consumers dedupe on the envelope id, so a redelivery has one effect. `secret.*` is the first family. Envelopes are JSON Schema contracts mirrored by `timelex-types`, and never carry secret values. See [ADR-0014](adr/0014-transactional-outbox.md); the broker path is [ADR-0010](adr/0010-messaging-and-sync-contracts.md).
 
+## MCP transport
+Services that serve MCP mount `timelex_mcp::router`. The adapter owns the only `rmcp` dependency (pinned exactly), requires explicit Origin and Host allow-lists and a non-zero body limit, turns off legacy sessions, requires per-request `_meta`, uses `NeverSessionManager`, and advertises only 2026-07-28. Its contract tests are a Rust port of the P1-08 probe script, so an SDK bump that changes transport behaviour fails CI. Task state, audit and events stay in the owning service's Postgres schema. See [ADR-0015](adr/0015-mcp-adapter.md).
+
 ## Contracts
 | Location | Purpose | Enforced by |
 |---|---|---|

@@ -4,7 +4,24 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-10-31 (latest): P1-06 outbox and relay — the vault publishes `secret.*`
+## 2026-11-01 (latest): P1-15 MCP adapter — one pinned, safe transport
+**Trigger:** research 08 verified `rmcp` 3.6.0 on the server side, but its defaults are built for a stateful intranet server: legacy sessions on, per-request metadata optional, Origin validation off, every protocol version accepted, and a loopback-only Host list. Any service wiring `rmcp` directly would have to remember all five settings.
+
+**Done**
+- [`crates/timelex-mcp`](../crates/timelex-mcp) is now the workspace's only `rmcp` dependency, pinned to `=3.6.0`. `Config::new` requires at least one full origin (`scheme://host[:port]`) and one allowed `Host`, and `with_max_request_body_bytes` refuses zero (default 1 MiB); failures are typed `ConfigError`s. `Config::transport` sets `legacy_session_mode = false`, `stateless_protocol_metadata_required = true`, the explicit allow-lists and the limit. `router` mounts the handler at `/mcp` with `NeverSessionManager`.
+- `SUPPORTED_VERSIONS` and `supported_versions()` advertise only 2026-07-28. The adapter's test handler overrides `ServerHandler::supported_protocol_versions` with it, so discovery lists one version and a legacy `initialize` gets `-32022` and no negotiated version.
+- [`tests/probes.rs`](../crates/timelex-mcp/tests/probes.rs): 23 contract tests. Each probe starts a real axum server on an ephemeral loopback port and repeats the 18 checks in `spike/probe.sh` — discovery, `tools/list`, `tools/call`, Tasks create and cross-request `tasks/get`, missing `_meta`, header/body mismatches, unsupported and conflicting versions, GET/DELETE 405, ignored `Mcp-Session-Id`, bad Origin and Host, legacy `initialize` — plus a strict-metadata case and five configuration checks. All pass.
+- [ADR-0015](adr/0015-mcp-adapter.md) records the decision; TASKS, INDEX, ARCHITECTURE and the README layout are updated.
+
+**Decisions and why**
+- **Defaults are replaced in code, not in deployment policy.** Origin validation is a spec MUST, and a deployment that forgets the list should fail to start, not serve unvalidated traffic.
+- **Only 2026-07-28.** No TimeLex client speaks an older revision and the gateway already requires that header ([ADR-0013](adr/0013-gateway-limits-and-metering.md)); accepting the rest only widens the surface.
+- **The contract tests pin behaviour, not just our wrapper.** Probe 18 showed `rmcp` delivers the legacy rejection over SSE with HTTP 200 and `-32022`; the test asserts the rejection and that no version was agreed, so an SDK change that starts negotiating would fail CI without pinning an incidental status.
+- **The adapter stops at the transport.** Task state stays in memory in the test only; a real service must put task rows in Postgres before advertising the Tasks extension.
+
+**Next:** wire the first service's MCP tools through the adapter (vault tools need a durable task store for anything long-running), and leave `rmcp` bumps to a reviewed PR that runs these probes. Gateway aggregation (`tools/list`, SSE, task-id routing) is still open. P1-07 compose and P1-10 telemetry remain the other Phase 1 gaps.
+
+## 2026-10-31: P1-06 outbox and relay — the vault publishes `secret.*`
 **Trigger:** the vault could change a key with no way for another service to learn about it. P2-02 (capture-hub ingest) and the audit consumers need the event path first.
 
 **Done**

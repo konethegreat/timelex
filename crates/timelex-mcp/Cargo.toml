@@ -1,0 +1,25 @@
+[package]
+name = "timelex-mcp"
+description = "The thin, pinned rmcp adapter for TimeLex: safe stateless MCP 2026-07-28 configuration (P1-15)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Exact pin on purpose: rmcp shipped 14 releases in the 12 weeks after the spec, and a change in
+# its transport defaults or errors must pass this crate's contract tests before it can merge
+# (research 08 §6).
+rmcp = { version = "=3.6.0", features = ["server", "transport-streamable-http-server"] }
+axum = "0.8"
+
+[dev-dependencies]
+axum = "0.8"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }

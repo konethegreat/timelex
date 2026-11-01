@@ -8,7 +8,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 1. **T0-R01** GhostPractice demo or trial, plus three user interviews. _Kit ready:_ [interview-kit](validation/interview-kit.md), [demo-checklist](validation/demo-checklist.md).
 2. **T0-B01** Five fee-earner interviews: how time is recorded today and what they would let a machine post.
 3. **P1-01 → P1-03** Postgres schemas and roles, tenancy with row-level security, identity.
-4. ~~P1-08~~ Server side verified 20 Oct 2026 ([research 08](research/08-mcp-rust-sdk-spike.md)). Next: **P1-15** adapter crate with contract tests; **T0-L05** send Anthropic the written questions.
+4. ~~P1-08~~ Server side verified 20 Oct 2026 ([research 08](research/08-mcp-rust-sdk-spike.md)); ~~P1-15~~ adapter crate with contract tests done 1 Nov 2026 ([ADR-0015](adr/0015-mcp-adapter.md)). Next: wire the services to the adapter as their MCP tools land; **T0-L05** send Anthropic the written questions.
 5. **P3-01** Start the synthetic gold-set generator now; it is the long pole for Gate A.
 
 ## Phase 0: Foundations
@@ -62,7 +62,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 | P1-12 | Branch protection / rulesets; required checks | P0-10 | PRs need green CI | ⬜ |
 | P1-13 | `mcp-host` skeleton: `ModelProvider` trait, Anthropic adapter, budgets; MCP client side tested here; **escalation ladder is tenant-conditional (Fable-class models need a 30-day-retention workspace, [research 07](research/07-anthropic-terms-and-key-custody.md) §3)** | P1-05 | Mock-provider test; Rand cap aborts a loop; a model the key cannot use degrades to the next rung or `needs_review` | ⬜ |
 | P1-14 | Hash-chained audit-log library | P1-01 | Tamper test detects edit | ⬜ |
-| P1-15 | `timelex-mcp` adapter: safe `rmcp` config (stateless, Origin checks, required metadata, 2026-07-28 only), exact version pin, the spike's 18 probes as Rust contract tests | P1-08 | Probes pass in CI; an `rmcp` bump that breaks one fails CI | ⬜ |
+| P1-15 | `timelex-mcp` adapter: safe `rmcp` config (stateless, Origin checks, required metadata, 2026-07-28 only), exact version pin, the spike's 18 probes as Rust contract tests | P1-08 | Probes pass in CI; an `rmcp` bump that breaks one fails CI | ✅ [ADR-0015](adr/0015-mcp-adapter.md); [`timelex-mcp`](../crates/timelex-mcp) pins `rmcp = "=3.6.0"`, validates explicit origins/hosts and a non-zero body limit, disables legacy sessions, requires per-request metadata, uses `NeverSessionManager`, advertises only 2026-07-28, and repeats all 18 probes plus strict metadata and config checks as 23 Rust contract tests. Gateway aggregation (`tools/list`, SSE, task-id routing) remains open |
 
 ## Phase 2: Capture
 | ID | Task | After | Acceptance | Status |
