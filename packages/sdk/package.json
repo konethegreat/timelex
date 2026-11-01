@@ -1,7 +1,7 @@
 {
   "name": "@timelex/sdk",
   "version": "0.1.0",
-  "description": "Typed TypeScript client for the TimeLex gateway (stub: health and metadata).",
+  "description": "Typed TypeScript client for the TimeLex gateway, with contract types generated from contracts/.",
   "license": "Apache-2.0",
   "author": "Kone Tshivhinda",
   "type": "module",

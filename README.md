@@ -71,7 +71,8 @@ contracts/    OpenAPI, JSON Schema (events), MCP tool catalogue: the source of t
 crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP transport)
 services/     One folder per service; gateway is built, the rest are specified (README per service)
 workers/      Python workers (redaction now; OCR/ML later). No business rules.
-packages/     TypeScript SDK (web app and Outlook add-in arrive in Phase 4–5)
+packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)
+tools/        sdk-gen (contract → SDK types); later the new-service generator
 plugin/       Claude plugin manifest
 eval/         Evaluation harness and gold-set spec (accuracy is measured, not asserted)
 deploy/       Docker Compose dev stack (Phase 1)
@@ -84,7 +85,7 @@ docs/         Research, architecture, ADRs, phases, tasks, worklog
 cargo test --workspace                   # Rust: units + contract types + gateway
 cargo run -p timelex-gateway             # http://127.0.0.1:8088/health
 (cd workers/py-worker && uv sync && uv run pytest)   # Python: redaction worker
-npm ci && npm run build && npm test      # TypeScript SDK
+npm ci && npm run build && npm run check:sdk && npm test   # TypeScript SDK + contract drift
 ```
 
 ```bash
