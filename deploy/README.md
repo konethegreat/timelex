@@ -52,6 +52,12 @@ MinIO's published images no longer resolve (checked 1 November 2026), so the dev
 
 The host ports are deliberately non-default (`55433` for Postgres, `9100` for S3): a developer machine often already runs a database on 5432 and another tool on 9000. Change the left-hand side in `docker-compose.yml` if those clash too; the container-side ports and the services' internal URLs do not change.
 
+### Logs and traces
+
+The three services write one JSON record per event (`TIMELEX_LOG_FORMAT=json`) at `RUST_LOG=info`, with sensitive field names and bearer tokens redacted before formatting. `docker compose logs gateway identity vault` shows them together.
+
+Traces and metrics are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Point it at a collector running on the host (for example `http://host.docker.internal:4318` for OTLP/HTTP) and uncomment the line for the service you are debugging. Without it the services still share one trace id per request, so a log line in the gateway and the line for the same request in the vault carry the same id; nothing leaves the machine. See [ADR-0016](../docs/adr/0016-telemetry-kit.md).
+
 ### The Python worker
 
 `workers/py-worker` is a library today: the redaction rules are exercised by `pytest`, and nothing consumes a queue yet. The compose stack therefore does not run it; its container belongs with the first queue consumer (P2-02 and P2-07).

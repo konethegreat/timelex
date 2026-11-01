@@ -4,7 +4,31 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-07 compose stack — five healthy containers and a working secret
+## 2026-11-01 (latest): P1-10 telemetry kit — one trace from the caller to the service
+**Trigger:** a request that crossed the gateway into identity or the vault had no shared identifier. A firm reporting a failed save gave an operator nothing to search: no trace id, no route label, no latency, and no way to tell whether the service was reached. P1-11 will generate services, so the next one must inherit observability rather than copy it.
+
+**Done**
+- [`crates/timelex-telemetry`](../crates/timelex-telemetry) is the workspace's only OpenTelemetry dependency (`opentelemetry` 0.33, `tracing-opentelemetry` 0.34). Three entry points: `init(service)`, `instrument(router, service)` and `inject(&mut HeaderMap)`.
+- `instrument` runs after routing, so every request gets one server span named `METHOD /matched/route` (raw path when nothing matched) with method, path, route, status and `ERROR` on 5xx, plus `timelex.http.server.requests` (counter) and `timelex.http.server.duration` (histogram, seconds) labelled by method, route and status. An unmatched path is labelled `unmatched`, so cardinality follows the route table.
+- `init` installs one subscriber: the OpenTelemetry layer plus a `fmt` layer whose event format writes JSON or plain text (`TIMELEX_LOG_FORMAT`) prefixed with the service name. Sensitive field names and bearer tokens are replaced with `[redacted]` before formatting. `TelemetryGuard` shuts the providers down on exit, flushing batches.
+- Propagation is W3C `traceparent` only. The gateway extracts an incoming trace in the middleware and injects the current context in `authenticate`, `forward` and `relay`; identity and the vault extract from their own inbound request in the same middleware.
+- Export is opt-in: with `OTEL_EXPORTER_OTLP_ENDPOINT` set, a batch span exporter and periodic metric reader send OTLP/HTTP protobuf; without it, ids are still real and still propagated.
+- Wiring: `app_with` instruments the gateway's public and internal routers, `http::router` instruments identity and vault, and each `serve` calls `init` and keeps the guard. `keygen` and `migrate` do not install telemetry.
+- Tests: 9 in the crate (a combined propagation test that reads exported spans with route and status attributes, a metrics test with an in-memory reader, three log-format tests and four redaction tests), plus a gateway test over the stub identity: one caller trace contains the gateway span and the service's child span, both internal calls carry the caller's trace id and the gateway's span id.
+- [ADR-0016](adr/0016-telemetry-kit.md); TASKS, INDEX, ARCHITECTURE, the root README layout and the deploy readme are updated; compose sets `TIMELEX_LOG_FORMAT=json`, `RUST_LOG=info` and documents the endpoint variable.
+- Verified beyond the tests: the rebuilt image and `docker compose up --wait` brought all five containers up healthy; a tenant was created and a `generic_api_key` written and listed through the gateway (201 with matching last four, list 1), the vault relay emitted `secret.created`, and no value appeared in a log. The gateway binary also served `/health` with a live OTLP endpoint configured and JSON logs, so `init` builds both exporters inside the tokio runtime without blocking.
+
+**Decisions and why**
+- **One crate, not per-service setup.** Three copies of the middleware is how span names, the propagation format and the redaction list drift; P1-11 would generate a fourth.
+- **Opt-in export, always-on propagation.** A service that cannot reach a collector would otherwise fill its batch queue and retry, and the dev stack would need a collector to stay quiet. One environment variable turns export on without a code change.
+- **`i64` for the status attribute.** `record_u64` in `tracing-opentelemetry` falls back to `record_debug`, which exports the status as a string; the test pins the numeric type.
+- **Record the status inside the instrumented future.** A span ends when the instrumented future completes, so recording afterwards closes the span without the attribute.
+- **Redaction before formatting.** A collector must never receive the value; the filter runs in the event format, which both the JSON and plain paths use.
+- **The test seam is `#[doc(hidden)]`.** `install_for_tests` takes a caller-owned tracer, so the gateway asserts real parent-child span links without a collector and the production path never links the testing code.
+
+**Next:** tighten redaction tests with a field named like a body when P2-02 starts logging capture payloads; add MCP request spans and per-model-call records to the same crate as those features land; add a collector service to compose when a deployment first needs one. P1-11 (new-service generator) and P1-13 (MCP host skeleton) are the remaining Phase 1 gaps; P1-12 is branch protection, a shared repository setting.
+
+## 2026-11-01: P1-07 compose stack — five healthy containers and a working secret
 **Trigger:** every service so far was started with `cargo run` against a hand-prepared Postgres, and the internal token, master key and operator credentials were pasted into shells. A new contributor could not bring the platform up with one command, and CI never saw the services talk to each other.
 
 **Done**

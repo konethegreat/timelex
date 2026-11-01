@@ -28,6 +28,7 @@ async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, String> {
 }
 
 async fn serve() -> Result<(), String> {
+    let _telemetry = timelex_telemetry::init("gateway").map_err(|e| e.to_string())?;
     let config = Config::from_env()?;
     let internal_addr = config.internal_addr;
     if !internal_addr.ip().is_loopback() {
