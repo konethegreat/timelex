@@ -12,6 +12,8 @@ use axum::http::{header, Method, StatusCode};
 use axum::response::Response;
 use axum::Router;
 use http_body_util::BodyExt;
+use opentelemetry::trace::{SpanId, TracerProvider};
+use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
 use serde_json::{json, Value};
 use timelex_auth::{generate_keypair, Caller, Verifier};
 use timelex_gateway::config::{sha256, Config};
@@ -94,6 +96,8 @@ async fn stub(behaviour: impl Fn(&Seen) -> (StatusCode, String, Duration) + Send
             r
         }
     });
+    // Instrumented after the route exists, as a real service's router is.
+    let app = timelex_telemetry::instrument(app, "stub");
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1312,4 +1316,97 @@ async fn the_firm_budget_also_covers_mcp_calls() {
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(r.headers[header::RETRY_AFTER], "1");
     assert_eq!(vault.calls().len(), 1, "the refused call was not forwarded");
+}
+
+// ---------- tracing ----------
+
+/// P1-10 acceptance: one trace spans the caller, the gateway and the service.
+///
+/// The test subscriber is installed once per process, so this is the only test that installs it. It
+/// is honest anyway: the gateway reads the caller's `traceparent`, starts its own span as the child,
+/// and every call it makes carries that context onwards.
+#[tokio::test]
+async fn one_trace_runs_from_the_caller_through_the_gateway_into_the_service() {
+    const TRACE_ID: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const CLIENT_SPAN_ID: &str = "00f067aa0ba902b7";
+
+    let exporter = InMemorySpanExporter::default();
+    let provider = SdkTracerProvider::builder()
+        .with_simple_exporter(exporter.clone())
+        .build();
+    let _guard = timelex_telemetry::install_for_tests("gateway", provider.tracer("gateway"))
+        .expect("the test subscriber should install");
+
+    let s = stub(happy).await;
+    let gw = gateway(format!("http://{}", s.addr), Duration::from_secs(2));
+    let incoming = format!("00-{TRACE_ID}-{CLIENT_SPAN_ID}-01");
+    // A tenant key makes the gateway authenticate against the stub first, so one caller's request
+    // produces two internal hops.
+    let authorization = format!("Bearer {}", TENANT_KEY.as_str());
+    let r = call(
+        &gw.app,
+        Method::POST,
+        "/v1/api-keys",
+        &[
+            ("authorization", authorization.as_str()),
+            ("traceparent", incoming.as_str()),
+        ],
+        Some(&json!({"name": "trace-me"}).to_string()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED);
+
+    // Identity sees the same trace on both calls, and the gateway's own span as their parent.
+    let calls = s.calls();
+    assert_eq!(calls.len(), 2, "authenticate, then the forwarded call");
+    let mut forwarded_span_id = None;
+    for seen in &calls {
+        let traceparent = seen
+            .header("traceparent")
+            .unwrap_or_else(|| panic!("{} did not carry a trace header", seen.path));
+        let parts: Vec<&str> = traceparent.split('-').collect();
+        assert_eq!(parts.len(), 4, "{traceparent}");
+        assert_eq!(parts[1], TRACE_ID, "{traceparent}");
+        assert_ne!(parts[2], CLIENT_SPAN_ID, "the gateway starts its own span");
+        match &forwarded_span_id {
+            Some(earlier) => assert_eq!(earlier, parts[2], "both hops share the gateway span"),
+            None => forwarded_span_id = Some(parts[2].to_owned()),
+        }
+    }
+
+    // The gateway's span is in the caller's trace, and the service's span is its child.
+    let mut spans = Vec::new();
+    for _ in 0..100 {
+        spans = exporter.get_finished_spans().unwrap();
+        if spans
+            .iter()
+            .filter(|span| span.span_context.trace_id().to_string() == TRACE_ID)
+            .count()
+            >= 3
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let in_trace: Vec<_> = spans
+        .iter()
+        .filter(|span| span.span_context.trace_id().to_string() == TRACE_ID)
+        .collect();
+    let client_span = SpanId::from_hex(CLIENT_SPAN_ID).unwrap();
+    let gateway_span = in_trace
+        .iter()
+        .find(|span| span.parent_span_id == client_span && span.name == "POST /v1/api-keys")
+        .expect("the gateway span should continue the caller's trace");
+    assert_eq!(
+        gateway_span.span_context.span_id().to_string(),
+        forwarded_span_id.unwrap()
+    );
+    assert!(
+        in_trace.iter().any(|span| {
+            span.parent_span_id == gateway_span.span_context.span_id()
+                && span.name == "POST /v1/api-keys"
+                && span.span_context.span_id() != gateway_span.span_context.span_id()
+        }),
+        "the service should have its own span inside the gateway's"
+    );
 }

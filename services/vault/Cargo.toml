@@ -23,6 +23,7 @@ timelex-auth = { path = "../../crates/timelex-auth" }
 timelex-db = { path = "../../crates/timelex-db" }
 timelex-identity = { path = "../../crates/timelex-identity" }
 timelex-outbox = { path = "../../crates/timelex-outbox" }
+timelex-telemetry = { path = "../../crates/timelex-telemetry" }
 timelex-types = { path = "../../crates/timelex-types" }
 timelex-vault = { path = "../../crates/timelex-vault" }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }

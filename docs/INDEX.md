@@ -52,5 +52,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0013](adr/0013-gateway-limits-and-metering.md) | Gateway limits, metering and MCP header routing | Accepted |
 | [0014](adr/0014-transactional-outbox.md) | Transactional outbox on Postgres | Accepted |
 | [0015](adr/0015-mcp-adapter.md) | A pinned `rmcp` adapter for MCP 2026-07-28 | Accepted |
+| [0016](adr/0016-telemetry-kit.md) | One telemetry kit for every service | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

@@ -87,6 +87,10 @@ services:
       TIMELEX_BINARY: /usr/local/bin/timelex-identity-service
       TIMELEX_IDENTITY_ADDR: 0.0.0.0:8081
       TIMELEX_IDENTITY_DATABASE_URL: postgres://svc_identity@postgres:5432/timelex
+      TIMELEX_LOG_FORMAT: json
+      RUST_LOG: info
+      # Export traces and metrics by uncommenting this and pointing it at a collector:
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
     volumes: ["keys:/keys:ro"]
     depends_on:
       identity-migrate:
@@ -105,6 +109,9 @@ services:
       TIMELEX_BINARY: /usr/local/bin/timelex-vault-service
       TIMELEX_VAULT_ADDR: 0.0.0.0:8082
       TIMELEX_VAULT_DATABASE_URL: postgres://svc_vault@postgres:5432/timelex
+      TIMELEX_LOG_FORMAT: json
+      RUST_LOG: info
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
     volumes: ["keys:/keys:ro"]
     depends_on:
       vault-migrate:
@@ -123,6 +130,9 @@ services:
       TIMELEX_BINARY: /usr/local/bin/timelex-gateway
       TIMELEX_GATEWAY_ADDR: 0.0.0.0:8088
       TIMELEX_SERVICE_URLS: identity=http://identity:8081,vault=http://vault:8082
+      TIMELEX_LOG_FORMAT: json
+      RUST_LOG: info
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
     ports: ["127.0.0.1:8088:8088"]
     volumes: ["keys:/keys:ro"]
     depends_on:

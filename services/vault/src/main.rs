@@ -71,6 +71,7 @@ async fn migrate() -> Result<(), String> {
 }
 
 async fn serve() -> Result<(), String> {
+    let _telemetry = timelex_telemetry::init("vault").map_err(|e| e.to_string())?;
     let options = PgConnectOptions::from_str(&env("TIMELEX_VAULT_DATABASE_URL")?)
         .map_err(|e| format!("TIMELEX_VAULT_DATABASE_URL is not a valid URL: {e}"))?;
     let pool = TenantPool::connect(options.clone(), 10)

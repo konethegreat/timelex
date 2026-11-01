@@ -94,6 +94,8 @@ Row-level security by `tenant_id` in every schema, tenant set per request by the
 ## Observability
 OpenTelemetry traces and metrics from the platform kit; per-model-call records (model, tier, effort, tokens, cache hits, escalation reason, Rand cost); structured logs with redaction; an audit log distinct from operational logs.
 
+[`timelex-telemetry`](../crates/timelex-telemetry) is the workspace's only OpenTelemetry dependency. `instrument(router, service)` gives every HTTP request one server span (named by method and matched route) and two metrics (requests counter, duration histogram), and extracts an incoming W3C `traceparent`; `inject` carries that context on every internal call, so one trace runs from the caller through the gateway into the service. Export is opt-in through `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP/HTTP protobuf); without it ids and propagation still work. Logs are one `tracing` subscriber in JSON or plain text (`TIMELEX_LOG_FORMAT`) with sensitive field names and bearer tokens redacted before formatting. See [ADR-0016](adr/0016-telemetry-kit.md).
+
 ## Deployment
 | Mode | Stack | Phase |
 |---|---|---|

@@ -35,7 +35,7 @@ pub struct AppState {
 
 /// Build the router. Kept apart from `main` so tests can call it without a socket.
 pub fn router(store: IdentityStore, verifier: Verifier) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/health", get(health))
         .route("/v1/tenants", post(create_tenant))
         .route("/v1/api-keys", post(issue_api_key))
@@ -46,7 +46,8 @@ pub fn router(store: IdentityStore, verifier: Verifier) -> Router {
         .with_state(AppState {
             store,
             verifier: Arc::new(verifier),
-        })
+        });
+    timelex_telemetry::instrument(router, "identity")
 }
 
 // ---------- errors: RFC 9457 problem details ----------

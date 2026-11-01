@@ -23,9 +23,12 @@ uuid = { version = "1", features = ["v4"] }
 timelex-types = { path = "../../crates/timelex-types" }
 timelex-auth = { path = "../../crates/timelex-auth" }
 timelex-identity = { path = "../../crates/timelex-identity" }
+timelex-telemetry = { path = "../../crates/timelex-telemetry" }
 
 [dev-dependencies]
 async-trait = "0.1"
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 timelex-db = { path = "../../crates/timelex-db", features = ["testing"] }

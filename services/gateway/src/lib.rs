@@ -80,8 +80,8 @@ pub struct Gateway {
 pub fn app_with(config: config::Config) -> Result<Gateway, String> {
     let state = proxy::GatewayState::new(config)?;
     Ok(Gateway {
-        public: app().merge(proxy::routes(state.clone())),
-        internal: proxy::internal_routes(state),
+        public: timelex_telemetry::instrument(app().merge(proxy::routes(state.clone())), "gateway"),
+        internal: timelex_telemetry::instrument(proxy::internal_routes(state), "gateway"),
     })
 }
 

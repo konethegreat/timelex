@@ -1,0 +1,29 @@
+[package]
+name = "timelex-telemetry"
+description = "TimeLex telemetry kit: OpenTelemetry traces and metrics, W3C context propagation, redacted structured logs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum = "0.8"
+opentelemetry = "0.33"
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace", "metrics"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace", "metrics"] }
+serde_json = "1"
+time = { version = "0.3", features = ["formatting"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.34"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }

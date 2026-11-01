@@ -254,16 +254,17 @@ impl GatewayState {
             .signer
             .sign("identity", &Caller::Service)
             .map_err(|_| Reject::Internal)?;
-        let response = self
-            .0
-            .http
-            .post(format!("{base}/v1/authenticate"))
-            .bearer_auth(token)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(json!({ "token": api_key }).to_string())
-            .send()
-            .await
-            .map_err(|e| upstream_failure(&e))?;
+        let response = traced(
+            self.0
+                .http
+                .post(format!("{base}/v1/authenticate"))
+                .bearer_auth(token),
+        )
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(json!({ "token": api_key }).to_string())
+        .send()
+        .await
+        .map_err(|e| upstream_failure(&e))?;
         match response.status() {
             StatusCode::OK => {}
             StatusCode::UNAUTHORIZED => return Err(Reject::Unauthorized),
@@ -336,11 +337,12 @@ impl GatewayState {
         body: Option<Bytes>,
     ) -> Result<(Response, u64), Reject> {
         let base = self.0.config.service_url(service).ok_or(Reject::BadGateway)?;
-        let mut request = self
-            .0
-            .http
-            .request(method, format!("{base}{path}"))
-            .bearer_auth(token);
+        let mut request = traced(
+            self.0
+                .http
+                .request(method, format!("{base}{path}"))
+                .bearer_auth(token),
+        );
         if let Some(b) = body.filter(|b| !b.is_empty()) {
             request = request.header(header::CONTENT_TYPE, "application/json").body(b);
         }
@@ -356,7 +358,7 @@ impl GatewayState {
         body: Bytes,
         headers: &[(&'static str, String)],
     ) -> Result<(Response, u64), Reject> {
-        let mut request = self.0.http.post(url).bearer_auth(token);
+        let mut request = traced(self.0.http.post(url).bearer_auth(token));
         for (name, value) in headers {
             request = request.header(*name, value);
         }
@@ -367,6 +369,13 @@ impl GatewayState {
             .map_err(|e| upstream_failure(&e))?;
         relay_response(upstream).await
     }
+}
+
+/// Carry this request's trace context to the service, so its span joins the same trace.
+fn traced(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    let mut headers = HeaderMap::new();
+    timelex_telemetry::inject(&mut headers);
+    request.headers(headers)
 }
 
 /// Relay a service's answer, with its size. A 401 means the service refused *our* token
