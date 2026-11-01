@@ -356,6 +356,9 @@ async fn nothing_a_client_chose_reaches_the_service_except_the_body() {
             "content-type",
             "content-length",
             "accept",
+            // The gateway continues the caller's trace (ADR-0016): it writes this header itself from
+            // the extracted context, so the client's exact value is never forwarded.
+            "traceparent",
         ];
         for (name, value) in &seen.headers {
             assert!(
@@ -370,12 +373,20 @@ async fn nothing_a_client_chose_reaches_the_service_except_the_body() {
             "x-forwarded-for",
             "cookie",
             "idempotency-key",
-            "traceparent",
         ] {
             assert!(
                 seen.header(forbidden).is_none(),
                 "{forbidden} reached the service"
             );
+        }
+        // Whether telemetry is installed in this test process decides whether a trace header is
+        // sent; either way the client's exact value must not be copied through.
+        if let Some(traceparent) = seen.header("traceparent") {
+            assert_ne!(
+                traceparent, "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                "the client's traceparent was forwarded unchanged"
+            );
+            assert_eq!(traceparent.split('-').count(), 4, "{traceparent}");
         }
         assert!(
             !seen.path.contains('?'),

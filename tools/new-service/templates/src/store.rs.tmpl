@@ -1,0 +1,93 @@
+// Written by Kone Tshivhinda & Claude
+//! The @name@ store. Every query runs inside a [`TenantTx`](timelex_db::TenantTx), so Postgres
+//! row-level security confines it to one firm.
+
+use time::OffsetDateTime;
+use timelex_auth::Principal;
+use timelex_db::TenantPool;
+use timelex_identity::{TenantId, UserId};
+use uuid::Uuid;
+
+use crate::error::StoreError;
+
+/// Who is acting. Built only from a verified internal token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Actor {
+    /// The firm.
+    pub tenant: TenantId,
+    /// The user acting.
+    pub user: UserId,
+}
+
+impl From<&Principal> for Actor {
+    fn from(principal: &Principal) -> Self {
+        Self {
+            tenant: principal.tenant,
+            user: principal.user,
+        }
+    }
+}
+
+/// One row of `@name@.items`.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct Item {
+    /// Row id, unique within the firm.
+    pub id: Uuid,
+    /// Short label.
+    pub name: String,
+    /// When the row was created.
+    pub created_at: OffsetDateTime,
+}
+
+/// The @name@ store.
+#[derive(Clone)]
+pub struct Store {
+    pool: TenantPool,
+}
+
+impl Store {
+    /// A store over the service's connection pool.
+    pub fn new(pool: TenantPool) -> Self {
+        Self { pool }
+    }
+
+    /// Check the database answers. For `/health`; reads no tenant data.
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        Ok(self.pool.ping().await?)
+    }
+
+    /// List the caller's firm's items, newest first.
+    pub async fn list(&self, actor: Actor) -> Result<Vec<Item>, StoreError> {
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        let items = sqlx::query_as::<_, Item>(
+            "SELECT id, name, created_at FROM @name@.items ORDER BY created_at DESC, id",
+        )
+        .fetch_all(tx.conn())
+        .await?;
+        tx.commit().await?;
+        Ok(items)
+    }
+
+    /// Create an item for the caller's firm.
+    pub async fn create(&self, actor: Actor, name: &str) -> Result<Item, StoreError> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 200 {
+            return Err(StoreError::Invalid("name must be 1 to 200 characters"));
+        }
+        let item = Item {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            created_at: OffsetDateTime::now_utc(),
+        };
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        sqlx::query("INSERT INTO @name@.items (tenant_id, id, name, created_at) VALUES ($1, $2, $3, $4)")
+            .bind(actor.tenant.as_uuid())
+            .bind(item.id)
+            .bind(&item.name)
+            .bind(item.created_at)
+            .execute(tx.conn())
+            .await?;
+        tx.commit().await?;
+        Ok(item)
+    }
+}

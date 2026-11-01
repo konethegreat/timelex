@@ -1,0 +1,15 @@
+# Written by Kone Tshivhinda & Claude
+[package]
+name = "timelex-new-service"
+description = "Generate a TimeLex service with the platform's conventions already in place."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
