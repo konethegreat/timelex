@@ -4,7 +4,36 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-09 SDK types generated from the contracts, drift fails CI
+## 2026-11-01 (latest): P1-07 compose stack — five healthy containers and a working secret
+**Trigger:** every service so far was started with `cargo run` against a hand-prepared Postgres, and the internal token, master key and operator credentials were pasted into shells. A new contributor could not bring the platform up with one command, and CI never saw the services talk to each other.
+
+**Done**
+- [`Dockerfile`](../Dockerfile) builds one image: a `rust:1-bookworm` builder with BuildKit cache mounts for the registry and `target`, the three binaries copied to `/out` (a cache mount does not persist into a layer), and a `debian:bookworm-slim` runtime with `ca-certificates` and `curl`, non-root `USER 10001:10001`, and the entrypoint.
+- [`deploy/docker-compose.yml`](../deploy/docker-compose.yml): Postgres 17 on host port 55433, SeaweedFS 4.51 in `mini` mode on 9100, a one-shot `keys` container, one-shot `identity-migrate` and `vault-migrate` containers, and the identity, vault and gateway services with healthchecks and `depends_on` conditions. `docker compose up --wait` returns only when all five are healthy. The gateway publishes `127.0.0.1:8088`.
+- [`deploy/container/generate-keys.sh`](../deploy/container/generate-keys.sh) is idempotent: it runs the gateway's own `keygen`, writes the public keys and the operator-key and master-key hashes to `/keys/env`, and stores the operator key in `/keys/operator-key` with mode 0444. [`deploy/container/entrypoint.sh`](../deploy/container/entrypoint.sh) exports that file (`set -a`) and execs `$TIMELEX_BINARY`.
+- [`deploy/postgres/dev/005_dev_logins.sql`](../deploy/postgres/dev/005_dev_logins.sql) grants `LOGIN` to the migrator and service roles for the compose stack only; the bootstrap roles stay passwordless and `NOLOGIN`. Compose sets `POSTGRES_HOST_AUTH_METHOD=trust`, publishes Postgres on loopback only, and both files say the stack is not a deployment manifest.
+- [`.dockerignore`](../.dockerignore) keeps `target`, `node_modules`, docs and the plugin out of the build context; [`.gitattributes`](../.gitattributes) pins LF for shell scripts and the Dockerfile, because a CRLF entrypoint fails with a cryptic `exec format error`.
+- [Deploy readme](../deploy/README.md) is rewritten with the service table, up/ps/curl commands, key retrieval, a tenant-creation example, the usage endpoint, and the security caveats. The root README quick start and the Postgres readme point at it.
+
+**Verified**
+- All five containers healthy (`docker compose ps`, `up --wait` exit 0).
+- `/health` returns `{"status":"ok"}` and `/v1/meta` returns the gateway's version, contracts and stage.
+- A tenant was created with the generated operator key (201), then a `generic_api_key` was written through the gateway with a value generated at run time: 201, metadata only, `lastFour` matching, `allowedHosts: ["example.test"]`; list showed one, `DELETE` returned 204, list showed zero.
+- The vault relay logged `secret.created` then `secret.revoked` with metadata only, and neither the vault nor the gateway log contained the value.
+- Unauthenticated and invalid-key requests to `/v1/secrets` returned 401.
+
+**Decisions and why**
+- **SeaweedFS instead of MinIO.** No MinIO tag resolves from Docker Hub or Quay any more (checked 1 Nov 2026). SeaweedFS's `mini` mode is a single container with master and S3 and an HTTP cluster-status endpoint, which makes the healthcheck a plain `wget`.
+- **Non-default host ports.** A developer machine that already runs Postgres and an S3 gateway cannot start the stack otherwise; 55433 and 9100 avoid the collision and are documented. Container-to-container traffic still uses the standard ports.
+- **One image, three binaries.** The services share the workspace dependency graph; three images would compile it three times. `TIMELEX_BINARY` picks the process.
+- **Keys are generated into a volume, never committed.** The operator key is never printed by `up`; the readme shows how to read it. Re-running the stack keeps the same keys, so tokens and stored secret rows survive a restart.
+- **`set -a`, not a plain source.** A sourced assignment stays shell-local; without export the services exited with `TIMELEX_GATEWAY_PUBLIC_KEYS is not set`. The entrypoint exports the whole file once.
+- **The healthcheck talks TCP.** `pg_isready` with no host uses the init socket, which answers during the init phase before the server accepts connections; `-h 127.0.0.1` tests what the services will actually use.
+- **No worker container yet.** `workers/py-worker` is a library with no entry point; a container that runs nothing would only look healthy.
+
+**Next:** P1-10 telemetry (traces, metrics, redacted logs) is the remaining Phase 1 kit gap and unblocks P1-11's `tools/new-service`. The compose stack is a development convenience, not a production deployment; a real deployment target still needs secrets management and TLS.
+
+## 2026-11-01: P1-09 SDK types generated from the contracts, drift fails CI
 **Trigger:** the SDK's `Health`, `Meta` and `ActivityEvent` were typed by hand. A contract change that nobody mirrored would compile and ship, and the first sign of trouble would be a runtime mismatch.
 
 **Done**

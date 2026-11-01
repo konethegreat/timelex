@@ -19,14 +19,23 @@ One database, one **schema** and one **login role** per service. Two layers of S
 Roles are created `NOLOGIN` and **no file in this repository contains a password**.
 
 ## Local development
-```
+The compose stack applies the four bootstrap files automatically when the `pgdata` volume is first
+created, then runs `dev/005_dev_logins.sql`, which grants the service roles `LOGIN` for the stack's
+trust authentication. That file is local-compose-only; never run it against a shared database.
+```bash
 docker compose -f deploy/docker-compose.yml up -d postgres
-# as the superuser from the compose file, run the four bootstrap files in order, then:
-#   ALTER ROLE timelex_migrator LOGIN PASSWORD '...';   ALTER ROLE svc_identity LOGIN PASSWORD '...';
-#   ALTER ROLE svc_vault LOGIN PASSWORD '...';
-# choose your own passwords and keep them in your untracked .env
 ```
-`timelex_db::bootstrap(&admin_pool)` runs the four files for you from Rust.
+For a Postgres you run yourself, apply the four bootstrap files in order as an administrator, then
+either set real passwords or, for a throwaway local database only, grant `LOGIN` as the dev file does:
+```bash
+psql "$ADMIN_URL" -f deploy/postgres/bootstrap/001_roles_and_schemas.sql
+psql "$ADMIN_URL" -f deploy/postgres/bootstrap/002_tenancy.sql
+psql "$ADMIN_URL" -f deploy/postgres/bootstrap/003_outbox.sql
+psql "$ADMIN_URL" -f deploy/postgres/bootstrap/004_provision_services.sql
+psql "$ADMIN_URL" -f deploy/postgres/dev/005_dev_logins.sql   # local trust auth only
+```
+`timelex_db::bootstrap(&admin_pool)` runs the four bootstrap files for you from Rust. The compose
+stack does not use it: the Postgres image applies them through `docker-entrypoint-initdb.d`.
 
 ## Tests
 The tenancy and role-isolation tests in `crates/timelex-db` need a **throwaway** Postgres that trusts local connections (so no password exists):

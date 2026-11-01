@@ -1,0 +1,4 @@
+# Written by Kone Tshivhinda & Claude
+# Container scripts run in Linux images; a CRLF checkout would break their shebangs.
+*.sh text eol=lf
+Dockerfile text eol=lf

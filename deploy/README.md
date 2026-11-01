@@ -2,29 +2,83 @@
 
 _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
-Today: `docker-compose.yml` starts **Postgres 17** and **MinIO** (S3-compatible object storage) bound to localhost for development. Phase 1 (task P1-07) adds the services and the py-worker so `docker compose up` runs the whole stack; Helm and hosted infrastructure follow in Phases 5 and 8.
+## The local development stack
+
+`docker-compose.yml` runs the Phase 1 stack, all bound to loopback:
+
+| Service | What it is | Where it listens |
+|---|---|---|
+| `postgres` | Postgres 17; the bootstrap is applied on first start | `127.0.0.1:55433` |
+| `seaweedfs` | S3-compatible object storage (S3 gateway) | `127.0.0.1:9100` |
+| `keys` | one-shot: generates the gateway key pair, the operator key and the vault master key | the `keys` volume |
+| `identity-migrate`, `vault-migrate` | one-shot migrations as `timelex_migrator` | |
+| `identity` | identity service | `identity:8081`, container network only |
+| `vault` | vault service plus its outbox relay | `vault:8082`, container network only |
+| `gateway` | public edge | `http://127.0.0.1:8088` |
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
-docker compose -f deploy/docker-compose.yml down        # keeps data volumes
-docker compose -f deploy/docker-compose.yml down -v     # deletes data
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml ps          # wait for healthy
+curl -s http://127.0.0.1:8088/health
 ```
 
-The credentials in the file are throwaway local values. Pin the `latest` MinIO tag to a release before relying on it (Dependabot will propose updates once pinned).
+`down` keeps the data volumes; `down -v` deletes them. The Postgres bootstrap and the dev login grants run **only when `pgdata` is empty**, so a changed bootstrap needs `down -v` (which deletes local data).
 
-## Running the gateway and identity by hand (until P1-07 does it for you)
-Prerequisites: Postgres with the bootstrap applied ([postgres/README.md](postgres/README.md)), and `timelex_migrator` and `svc_identity` allowed to log in (set your own passwords; keep them in an untracked `.env`).
+### Keys are generated, never committed
+
+On first start the `keys` container runs `timelex-gateway keygen`, creates a random operator key and a 32-byte vault master key, and writes `/keys/env` and `/keys/operator-key` into the `keys` volume. Services source `/keys/env` from their entrypoint. The values are local-development secrets: do not reuse them, and do not expect them to survive `down -v`.
+
 ```bash
+OPERATOR_KEY=$(docker compose -f deploy/docker-compose.yml exec -T gateway cat /keys/operator-key)
+curl -sS -X POST http://127.0.0.1:8088/v1/tenants \
+  -H "authorization: Bearer $OPERATOR_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"slug":"example-attorneys","displayName":"Example Attorneys Inc","adminEmail":"partner@example-attorneys.example","adminDisplayName":"Pat Partner"}'
+```
+
+The response carries `initialApiKey.token` once; use it as the tenant's bearer token. Request counters are on the gateway's loopback-only listener inside the container:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec gateway curl -s http://127.0.0.1:8089/internal/usage
+```
+
+### Trust authentication is for this stack only
+
+The bootstrap creates service roles `NOLOGIN` and sets no passwords (see [postgres/README.md](postgres/README.md)). So that a local stack needs no committed credential, Postgres is started with `POSTGRES_HOST_AUTH_METHOD=trust` and the compose-only file `postgres/dev/005_dev_logins.sql` grants the roles `LOGIN`. The port is published to `127.0.0.1` only. Never expose this stack, and never run that file against a shared or hosted database: a real deployment sets passwords (or uses the platform's IAM authentication) and keeps the roles as the bootstrap leaves them.
+
+### Object storage
+
+MinIO's published images no longer resolve (checked 1 November 2026), so the dev stack uses SeaweedFS, which speaks S3 on port 8333 (published on `127.0.0.1:9100`). It runs without S3 credentials for now; configure them when the first service stores content (P2-02) and keep the port off any public interface.
+
+The host ports are deliberately non-default (`55433` for Postgres, `9100` for S3): a developer machine often already runs a database on 5432 and another tool on 9000. Change the left-hand side in `docker-compose.yml` if those clash too; the container-side ports and the services' internal URLs do not change.
+
+### The Python worker
+
+`workers/py-worker` is a library today: the redaction rules are exercised by `pytest`, and nothing consumes a queue yet. The compose stack therefore does not run it; its container belongs with the first queue consumer (P2-02 and P2-07).
+
+## Building the image
+
+The repository [`Dockerfile`](../Dockerfile) builds one image with the gateway, identity and vault binaries; compose selects one with `TIMELEX_BINARY`. It is a full release build with BuildKit cache mounts for the Cargo registry and `target`, so dependency compiles are reused between builds while a clean build takes several minutes. Use `cargo run` while iterating and let compose verify integration.
+
+## Running services by hand
+
+Useful when working on one service with `cargo run`. Start Postgres from the compose file (the bootstrap runs automatically), then run migrations once per release:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d postgres
 cargo run -p timelex-gateway -- keygen           # prints a key pair: put the lines in your untracked environment
 # Choose an operator key, store only its hash:
 #   TIMELEX_OPERATOR_KEY_SHA256=$(printf %s "$YOUR_OPERATOR_KEY" | sha256sum | cut -d' ' -f1)
-# Database URLs (your own passwords): TIMELEX_MIGRATOR_DATABASE_URL, TIMELEX_IDENTITY_DATABASE_URL
-cargo run -p timelex-identity-service -- migrate  # once, and after each release
-cargo run -p timelex-identity-service             # 127.0.0.1:8081, private: only the gateway should reach it
-cargo run -p timelex-gateway                      # 127.0.0.1:8088; usage on 127.0.0.1:8089
-curl -X POST http://127.0.0.1:8088/v1/tenants -H "authorization: Bearer $YOUR_OPERATOR_KEY" \
-  -H 'content-type: application/json' \
-  -d '{"slug":"example-attorneys","displayName":"Example Attorneys Inc","adminEmail":"partner@example-attorneys.example","adminDisplayName":"Pat Partner"}'
-curl -s http://127.0.0.1:8089/internal/usage      # what the gateway has handled since it started
+# Database URLs on the published host port (55433); the compose roles have LOGIN and trust auth,
+# so there are no passwords:
+#   TIMELEX_MIGRATOR_DATABASE_URL=postgres://timelex_migrator@127.0.0.1:55433/timelex
+#   TIMELEX_IDENTITY_DATABASE_URL=postgres://svc_identity@127.0.0.1:55433/timelex
+#   TIMELEX_VAULT_DATABASE_URL=postgres://svc_vault@127.0.0.1:55433/timelex
+cargo run -p timelex-identity-service -- migrate
+cargo run -p timelex-vault-service -- migrate
+cargo run -p timelex-identity-service             # 127.0.0.1:8081
+cargo run -p timelex-vault-service                # 127.0.0.1:8082, needs TIMELEX_VAULT_MASTER_KEY
+cargo run -p timelex-gateway                      # 127.0.0.1:8088
 ```
-Environment variables are documented in `services/gateway/src/config.rs` and `services/identity/src/main.rs`. The gateway reads service addresses from `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`), the firm budget from `TIMELEX_RATE_LIMIT_PER_MINUTE` and `TIMELEX_RATE_LIMIT_BURST`, and binds the usage listener on `TIMELEX_GATEWAY_INTERNAL_ADDR`; keep that address on loopback. The `initialApiKey.token` in the answer is shown once.
+
+Environment variables are documented in `services/gateway/src/config.rs`, `services/identity/src/main.rs` and `services/vault/src/main.rs`. The gateway reads service addresses from `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`), the firm budget from `TIMELEX_RATE_LIMIT_PER_MINUTE` and `TIMELEX_RATE_LIMIT_BURST`, and binds the usage listener on `TIMELEX_GATEWAY_INTERNAL_ADDR`; keep that address on loopback.

@@ -75,7 +75,7 @@ packages/     TypeScript SDK, with types generated from the contracts (web app a
 tools/        sdk-gen (contract → SDK types); later the new-service generator
 plugin/       Claude plugin manifest
 eval/         Evaluation harness and gold-set spec (accuracy is measured, not asserted)
-deploy/       Docker Compose dev stack (Phase 1)
+deploy/       Docker Compose dev stack: Postgres, S3-compatible storage, gateway, identity, vault (Phase 1 ✅)
 docs/         Research, architecture, ADRs, phases, tasks, worklog
 ```
 
@@ -83,6 +83,7 @@ docs/         Research, architecture, ADRs, phases, tasks, worklog
 
 ```bash
 cargo test --workspace                   # Rust: units + contract types + gateway
+docker compose -f deploy/docker-compose.yml up -d --build   # full stack, loopback only; see deploy/README.md
 cargo run -p timelex-gateway             # http://127.0.0.1:8088/health
 (cd workers/py-worker && uv sync && uv run pytest)   # Python: redaction worker
 npm ci && npm run build && npm run check:sdk && npm test   # TypeScript SDK + contract drift
