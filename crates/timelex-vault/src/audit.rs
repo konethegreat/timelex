@@ -8,13 +8,13 @@
 //! The chain holds metadata only: which action, by which user, on which secret, and when. A detail
 //! string may say which kind was stored or whether a provider test passed; it never holds a value.
 
-use sha2::{Digest, Sha256};
+pub use timelex_audit::GENESIS;
 use timelex_identity::UserId;
 
 use crate::secret::SecretId;
 
-/// The previous hash of the first entry in a tenant's chain.
-pub const GENESIS: [u8; 32] = [0; 32];
+/// Keeps this chain's hashes distinct from another service's, and matches the tag vault v0 wrote.
+const AUDIT_DOMAIN: &str = "timelex-vault";
 
 /// What happened to a secret.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,24 +75,21 @@ pub struct AuditRecord<'a> {
 
 /// The hash stored with this entry: SHA-256 over the previous hash and this entry's fields.
 ///
-/// Every field is length-prefixed so that no two different entries can hash the same bytes (there
-/// is no separator for a detail string to forge its way past).
+/// The layout lives in [`timelex_audit::entry_hash`], shared with every other audit chain, and the
+/// domain tag keeps vault hashes from being interchangeable with another service's.
 pub fn entry_hash(prev: &[u8; 32], record: &AuditRecord<'_>) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(prev);
-    let mut push = |part: &[u8]| {
-        h.update((part.len() as u32).to_le_bytes());
-        h.update(part);
-    };
-    push(b"timelex-vault");
-    push(b"audit-v1");
-    push(record.action.as_str().as_bytes());
-    push(&record.seq.to_le_bytes());
-    push(&record.at_micros.to_le_bytes());
-    push(record.actor.as_uuid().as_bytes());
-    push(record.secret.as_uuid().as_bytes());
-    push(record.detail.as_bytes());
-    h.finalize().into()
+    timelex_audit::entry_hash(
+        AUDIT_DOMAIN,
+        prev,
+        &timelex_audit::AuditEntry {
+            seq: record.seq,
+            at_micros: record.at_micros,
+            kind: record.action.as_str(),
+            actor: record.actor,
+            subject: record.secret.as_uuid(),
+            detail: record.detail,
+        },
+    )
 }
 
 #[cfg(test)]

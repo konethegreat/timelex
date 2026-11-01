@@ -4,7 +4,26 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-15 MCP adapter — one pinned, safe transport
+## 2026-11-01 (latest): P1-14 audit chains — one verifier for every service
+**Trigger:** the vault grew a tamper-evident `secret_audit` chain in P1-05, but the hashing and checking lived inside the vault domain crate. The time ledger (P4-01), autonomy decisions and billing will all owe an audit chain, and three copies of a hash layout is how a chain stops being trustworthy.
+
+**Done**
+- [`crates/timelex-audit`](../crates/timelex-audit): `AuditEntry` (seq, microsecond time, kind, actor, subject UUID, non-secret detail), `StoredEntry` for rows read back, `entry_hash(domain, prev, entry)` and `verify(domain, &[StoredEntry]) -> Result<Hash, ChainError>`. `GENESIS` is 32 zero bytes. Every field is length-prefixed, and the service domain is hashed first, so two services' entries are never interchangeable.
+- 12 contract tests: deterministic hashing and field coverage, domain separation, byte-shift resistance, a good chain verifying to its head, an empty chain returning `GENESIS`, and detection of an edited entry, a dropped entry, a chain not starting at 1, reordered entries, a forged `prev_hash`, and a tail rehashed around an edit (caught by comparing the head to a separately stored anchor).
+- The first test pins the vault v0 hash for a known entry (`769a1a…c1ef`). The byte layout is unchanged, so chains written before the library existed still verify.
+- [`crates/timelex-vault/src/audit.rs`](../crates/timelex-vault/src/audit.rs): the vault now builds a library entry from its `AuditRecord` with domain `timelex-vault` and delegates hashing. Its action type and stored schema are untouched.
+- [`services/vault/tests/store.rs`](../services/vault/tests/store.rs): the chain assertion now reads the stored rows into `StoredEntry`s, verifies them with `timelex_audit::verify`, and compares the returned head with `vault.chain_heads`. Every existing vault test exercises it, so the real schema and hash format stay covered.
+
+**Decisions and why**
+- **One layout, domain-separated.** The domain is part of the hash input, so a `secret.created` entry cannot be lifted into another service's chain even if the other chain has the same shape.
+- **Verify returns the head.** Checking links alone cannot catch an attacker who recomputed the whole tail. Comparing the head with an independently stored value (or an external anchor later) can. The library does not choose the anchor; the service does.
+- **Microseconds, because that is Postgres's precision.** Hashing a value that storage truncates would make a stored chain fail to verify against its own rows.
+- **No schema or action types in the library.** Each service keeps its own vocabulary and table; only the chain rules are shared.
+- **The vault migrates now, not later.** It is the only chain with real rows and tests, so leaving it on a private copy would keep two implementations alive and make the compatibility test meaningless.
+
+**Next:** use the same library for the autonomy and ledger chains when those tables land (P4-01), and add an export or anchoring path so the head can be compared outside the database. P1-07 compose and P1-10 telemetry remain the other Phase 1 gaps.
+
+## 2026-11-01: P1-15 MCP adapter — one pinned, safe transport
 **Trigger:** research 08 verified `rmcp` 3.6.0 on the server side, but its defaults are built for a stateful intranet server: legacy sessions on, per-request metadata optional, Origin validation off, every protocol version accepted, and a loopback-only Host list. Any service wiring `rmcp` directly would have to remember all five settings.
 
 **Done**
