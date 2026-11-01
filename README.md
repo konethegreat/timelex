@@ -72,7 +72,7 @@ crates/       Rust libraries: timelex-units (billing units), timelex-types (cont
 services/     One folder per service; gateway is built, the rest are specified (README per service)
 workers/      Python workers (redaction now; OCR/ML later). No business rules.
 packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)
-tools/        sdk-gen (contract → SDK types); later the new-service generator
+tools/        sdk-gen (contract → SDK types), new-service (generate a service with auth, tenancy, health and CI)
 plugin/       Claude plugin manifest
 eval/         Evaluation harness and gold-set spec (accuracy is measured, not asserted)
 deploy/       Docker Compose dev stack: Postgres, S3-compatible storage, gateway, identity, vault (Phase 1 ✅)

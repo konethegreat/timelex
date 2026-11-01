@@ -46,7 +46,7 @@ TIMELEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/postgres cargo tes
 Without the variable the tests **fail** on purpose; `TIMELEX_SKIP_DB_TESTS=1` skips them knowingly. CI runs them against a service container. Never point the variable at a database you care about: each test creates and drops its own database, and creates roles in the cluster.
 
 ## Adding a service
-1. Add `CALL platform.provision_service('<name>');` to `bootstrap/004_provision_services.sql`.
+1. Start it with `cargo run -p timelex-new-service -- <name>`: that generates the service, adds the workspace member and adds `CALL platform.provision_service('<name>');` to `bootstrap/004_provision_services.sql`. Adding the line by hand gives you the schema and role without the code that uses them.
 2. Write the service's migration. Give each tenant-owned table a `tenant_id` column and call `CALL platform.apply_tenant_rls('<name>.<table>')`; grant the service role exactly the privileges it needs (column by column for anything that must not change).
 3. The test `every_table_has_the_standard_policy` fails until step 2 is done.
 4. Write events through `timelex_outbox::append` on the service's transaction; the provisioning procedure already grants the queue privileges described above.

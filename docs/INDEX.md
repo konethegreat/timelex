@@ -53,5 +53,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0014](adr/0014-transactional-outbox.md) | Transactional outbox on Postgres | Accepted |
 | [0015](adr/0015-mcp-adapter.md) | A pinned `rmcp` adapter for MCP 2026-07-28 | Accepted |
 | [0016](adr/0016-telemetry-kit.md) | One telemetry kit for every service | Accepted |
+| [0017](adr/0017-new-service-generator.md) | A generator for new services | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

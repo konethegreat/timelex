@@ -1,0 +1,18 @@
+-- Written by Kone Tshivhinda & Claude
+-- @name@ schema: one tenant-scoped table to grow from. Run by timelex_migrator with
+-- search_path = @name@; the platform bootstrap must have provisioned the service first.
+
+CREATE TABLE @name@.items (
+  tenant_id  uuid        NOT NULL,
+  id         uuid        NOT NULL,
+  name       text        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, id),
+  CONSTRAINT items_name_length CHECK (char_length(name) BETWEEN 1 AND 200)
+);
+
+-- Tenancy (ADR-0011): the standard policy, keyed by tenant_id.
+CALL platform.apply_tenant_rls('@name@.items');
+
+-- Privileges for the service role. Add only what the operations need.
+GRANT SELECT, INSERT, UPDATE, DELETE ON @name@.items TO svc_@name@;

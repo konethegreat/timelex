@@ -1,0 +1,191 @@
+// Written by Kone Tshivhinda & Claude
+//! The @name@ HTTP layer with a real Postgres behind it: health, authentication and tenancy.
+//! Callers are simulated by signing internal tokens, exactly as the gateway does.
+
+use axum::body::Body;
+use axum::http::{header, Method, Request, StatusCode};
+use axum::Router;
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
+use timelex_auth::{generate_keypair, Caller, Principal, Signer, Verifier};
+use timelex_db::testing::{setup as setup_db, ServiceUnderTest, TestDb};
+use timelex_identity::{ApiKeyId, Permission, TenantId, UserId};
+use tower::ServiceExt;
+use uuid::Uuid;
+
+use @ident@::{http, Store, MIGRATIONS};
+
+struct Env {
+    db: TestDb,
+    app: Router,
+    signer: Signer,
+}
+
+async fn env() -> Option<Env> {
+    let db = setup_db(&ServiceUnderTest {
+        service: "@name@",
+        migrations: &MIGRATIONS,
+    })
+    .await?;
+    let (_, tenants) = db.service_pool().await;
+    let keypair = generate_keypair().unwrap();
+    let signer = Signer::from_base64("k1", &keypair.private_pkcs8_base64).unwrap();
+    let verifier = Verifier::from_config("@name@", &format!("k1={}", keypair.public_base64)).unwrap();
+    let app = http::router(Store::new(tenants), verifier);
+    Some(Env { db, app, signer })
+}
+
+struct Reply {
+    status: StatusCode,
+    text: String,
+}
+
+impl Reply {
+    fn json(&self) -> Value {
+        serde_json::from_str(&self.text).unwrap_or(Value::Null)
+    }
+}
+
+async fn send(app: &Router, method: Method, path: &str, bearer: Option<&str>, body: Option<String>) -> Reply {
+    let mut request = Request::builder().method(method).uri(path);
+    if let Some(token) = bearer {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    let body = match body {
+        Some(body) => {
+            request = request.header(header::CONTENT_TYPE, "application/json");
+            Body::from(body)
+        }
+        None => Body::empty(),
+    };
+    let response = app.clone().oneshot(request.body(body).unwrap()).await.unwrap();
+    let (parts, body) = response.into_parts();
+    let bytes = body.collect().await.unwrap().to_bytes();
+    Reply {
+        status: parts.status,
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+    }
+}
+
+fn tenant() -> TenantId {
+    TenantId::from_uuid(Uuid::new_v4())
+}
+
+/// A principal as the gateway would present it. The routes do not read permissions, but a real
+/// token always carries them.
+fn principal(tenant: TenantId) -> Principal {
+    Principal {
+        tenant,
+        user: UserId::from_uuid(Uuid::new_v4()),
+        key: ApiKeyId::from_uuid(Uuid::new_v4()),
+        permissions: [Permission::TimeRead].into_iter().collect(),
+    }
+}
+
+fn token(env: &Env, caller: &Caller) -> String {
+    env.signer.sign("@name@", caller).unwrap()
+}
+
+// ---------- health and authentication ----------
+
+#[tokio::test]
+async fn health_needs_no_credentials() {
+    let Some(env) = env().await else { return };
+    let reply = send(&env.app, Method::GET, "/health", None, None).await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(reply.json()["status"], "ok");
+    env.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn items_need_a_principal_token() {
+    let Some(env) = env().await else { return };
+    let reply = send(&env.app, Method::GET, "/v1/items", None, None).await;
+    assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(reply.json()["type"], "urn:timelex:problem:unauthenticated");
+
+    let operator = token(&env, &Caller::Operator);
+    let reply = send(&env.app, Method::GET, "/v1/items", Some(&operator), None).await;
+    assert_eq!(reply.status, StatusCode::FORBIDDEN);
+    env.db.cleanup().await;
+}
+
+// ---------- the acceptance path ----------
+
+#[tokio::test]
+async fn an_item_is_listed_for_its_own_firm_only() {
+    let Some(env) = env().await else { return };
+    let firm_a = token(&env, &Caller::Principal(principal(tenant())));
+    let firm_b = token(&env, &Caller::Principal(principal(tenant())));
+
+    let reply = send(
+        &env.app,
+        Method::POST,
+        "/v1/items",
+        Some(&firm_a),
+        Some(json!({"name": "Opening letter"}).to_string()),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CREATED, "{}", reply.text);
+    let created = reply.json();
+    assert_eq!(created["name"], "Opening letter");
+    assert!(Uuid::parse_str(created["id"].as_str().unwrap()).is_ok());
+    assert!(created["createdAt"].as_str().unwrap().contains('T'));
+
+    let listed = send(&env.app, Method::GET, "/v1/items", Some(&firm_a), None).await;
+    assert_eq!(listed.status, StatusCode::OK);
+    let items = listed.json();
+    assert_eq!(items.as_array().unwrap().len(), 1);
+    assert_eq!(items[0]["name"], "Opening letter");
+
+    let other = send(&env.app, Method::GET, "/v1/items", Some(&firm_b), None).await;
+    assert_eq!(other.status, StatusCode::OK);
+    assert_eq!(
+        other.json().as_array().unwrap().len(),
+        0,
+        "firm B saw firm A's item"
+    );
+    env.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn bad_bodies_are_refused_without_echoing_them() {
+    let Some(env) = env().await else { return };
+    let caller = token(&env, &Caller::Principal(principal(tenant())));
+    for body in [
+        json!({"name": ""}),
+        json!({"name": "   "}),
+        json!({"name": "x".repeat(201)}),
+        json!({"name": "fine", "tenantId": Uuid::new_v4()}),
+    ] {
+        let reply = send(
+            &env.app,
+            Method::POST,
+            "/v1/items",
+            Some(&caller),
+            Some(body.to_string()),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(reply.json()["type"], "urn:timelex:problem:invalid-request");
+    }
+    let reply = send(
+        &env.app,
+        Method::POST,
+        "/v1/items",
+        Some(&caller),
+        Some("{not json".into()),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::BAD_REQUEST);
+    env.db.cleanup().await;
+}
+
+#[tokio::test]
+async fn unknown_paths_are_a_404_problem() {
+    let Some(env) = env().await else { return };
+    let reply = send(&env.app, Method::GET, "/nope", None, None).await;
+    assert_eq!(reply.status, StatusCode::NOT_FOUND);
+    assert_eq!(reply.json()["type"], "urn:timelex:problem:not-found");
+    env.db.cleanup().await;
+}

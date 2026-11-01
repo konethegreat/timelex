@@ -4,7 +4,28 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-01 (latest): P1-10 telemetry kit — one trace from the caller to the service
+## 2026-11-01 (latest): P1-11 new-service generator — the frame arrives with the service
+**Trigger:** identity, vault and gateway each carry the same operational frame by hand: internal-token check, tenant transaction, `/health`, problem-detail errors, telemetry, a schema with RLS and grants, and a workspace member. The copies already differ in details, and Phase 2 adds several services. The fourth copy is the one that forgets a grant or accepts a tenant id from the request.
+
+**Done**
+- [`tools/new-service`](../tools/new-service) is a dependency-free workspace binary. Templates are embedded with `include_str!`, so the tool ships with the repository. `generate(root, name)` writes `services/<name>` and patches exactly two existing files: the root `Cargo.toml` `members` list and `deploy/postgres/bootstrap/004_provision_services.sql`. Both edits are idempotent, and an existing service directory is refused rather than merged.
+- The name rule is the one `platform.provision_service` enforces: two to 31 characters, a lowercase letter first, then lowercase letters, digits or underscores, refusing `platform`, `public` and `pg_%`. It becomes the directory, the crate `timelex-<name>-service`, the schema and the role `svc_<name>`.
+- The generated service has the gateway-token extractor with the three caller kinds (401 for anything unverifiable, 403 for a valid token of the wrong kind), tenant transactions under row-level security, `/health`, telemetry (`init` and `instrument`), RFC 9457 problem bodies, a 64 KiB body limit and no echoing of input. It owns one tenant-scoped `items` table with the standard RLS policy and explicit grants, plus 5 database tests: health without credentials, 401 and 403, create and list, cross-firm isolation and bad input.
+- CLI: `cargo run -p timelex-new-service -- <name>` prints what it created and patched and names the next manual steps (contract, gateway route, compose).
+- CI: the Rust job now generates `example`, runs `cargo fmt --check`, `cargo clippy -D warnings` and the generated database tests, then restores the two patched files and removes the directory.
+- Docs: [ADR-0017](adr/0017-new-service-generator.md), the tool's own README, TASKS, INDEX, ARCHITECTURE, the root README and the Postgres readme.
+- Verified: 8 generator tests pass (names, all nine files and their content, token substitution, refusal to overwrite, idempotent patches, missing members list). Generating `example` and running fmt, clippy and the 5 database tests against a throwaway Postgres passed; the scratch directory and patches were then removed.
+
+**Decisions and why**
+- **Generate inside the workspace, test in CI.** A boilerplate repository drifts silently when the workspace's lint settings or dependency versions change. A generated member checked on every CI run makes that drift a failed build.
+- **Patch two files only.** Contracts, gateway routes and compose services need names, scopes and decisions the tool cannot infer; a wrong guess looks finished. The generated README lists them as next steps.
+- **Refuse existing directories.** A generator that merges with someone's work is one bad edit away from destroying it.
+- **One honest example, not a product feature.** `items` proves the frame end to end and is labelled as an example in the code and the README. Every generated test asserts something that would break if tenancy or authentication regressed.
+- **Embedded templates, no dependencies.** The template is the reference for the frame; keeping it in-repo means the tool cannot fetch a stale one, and the binary adds no supply-chain surface.
+
+**Next:** P1-13 (`mcp-host` skeleton: `ModelProvider` trait, Anthropic adapter, budgets, mock-provider test) is the remaining Phase 1 code gap; P1-12 is branch protection and needs a shared repository setting. When a generated service first needs a rule of its own, decide whether the auth and problem-detail frame should move into a shared crate rather than a fifth copy.
+
+## 2026-11-01: P1-10 telemetry kit — one trace from the caller to the service
 **Trigger:** a request that crossed the gateway into identity or the vault had no shared identifier. A firm reporting a failed save gave an operator nothing to search: no trace id, no route label, no latency, and no way to tell whether the service was reached. P1-11 will generate services, so the next one must inherit observability rather than copy it.
 
 **Done**
