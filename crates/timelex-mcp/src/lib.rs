@@ -6,6 +6,9 @@
 //! protocol version is accepted. This crate turns those defaults into the configuration
 //! [ADR-0015](../../../docs/adr/0015-mcp-adapter.md) fixes, and its contract tests are a Rust
 //! port of the P1-08 probe script, so an `rmcp` bump that changes transport behaviour fails CI.
+//!
+//! The [`client`] half applies the same rules in the other direction: the host connects with the
+//! pinned discovery lifecycle, no sessions, and TLS outside loopback.
 
 use std::{borrow::Cow, fmt, sync::Arc};
 
@@ -17,6 +20,8 @@ use rmcp::{
     },
     ServerHandler,
 };
+
+pub mod client;
 
 /// The only protocol revision TimeLex speaks.
 pub const PROTOCOL_VERSION: &str = "2026-07-28";

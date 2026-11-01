@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | 🟡 model loop implemented; MCP clients, lease and HTTP routes pending |
+| **Status** | 🟡 model loop and MCP client implemented; lease and HTTP routes pending |
 | **Language** | Rust |
 | **Phase** | 1–4 |
 | **Owns data** | `host` schema: workflow definitions, runs, context-pack references, budgets, memory (confirmed corrections only) |
@@ -35,6 +35,21 @@ cargo test -p timelex-mcp-host
 ```
 2 unit tests (money arithmetic and the published rates), 14 loop tests with a scripted mock provider (accept, escalation, unavailable-model degradation, rejected key, unreachable and unusable replies, Rand cap, zero cap, step limit) and 9 adapter tests against a local Axum stub (headers, request shape, reply shape, every error class, a provider that is not there). No test reaches the real provider.
 
+## MCP client (P1-13 increment 3, [ADR-0019](../../docs/adr/0019-mcp-client-rules.md))
+The host's connection to a server lives in [`timelex-mcp`](../../crates/timelex-mcp/src/client.rs), the same pinned crate that serves the server half.
+
+- `ClientTarget` validates before a connection exists: absolute URL, HTTPS except loopback (`127.0.0.0/8`, `::1`, `localhost`), and no username, password or fragment in the URL.
+- Discovery only: the pinned 2026-07-28 revision, no `initialize`, no fallback. A legacy-only server fails startup; an older-only server fails as `Protocol`.
+- Stateless: no session is issued or reused, and session re-initialisation is off, so a 404 is surfaced rather than hidden.
+- The bearer token is validated, zeroizing, redacted in `Debug`, and sent only in `Authorization`.
+- `call_tool_once` returns a finished result; `input_required` and task replies are refused until the workflow layer owns MRTR input and task polling.
+- Errors are closed: `Startup`, `Protocol`, `Transport`, `Rpc { code }`, `InputRequired`, `Task`, `Closed`; the server's message never enters one.
+
+```
+cargo test -p timelex-mcp
+```
+32 tests: 23 server probes and 9 client tests against the in-repo stateless server and legacy/older stubs.
+
 ## Contract (not served yet)
 - **REST:** `/v1/workflows`, `/v1/runs`, `/v1/runs/{id}`, `/v1/budgets`
 - **MCP tools:** `list_workflows` (R), `run_workflow` (W), `get_run` (R); long runs use the MCP Tasks extension
@@ -46,8 +61,7 @@ The caller leases the tenant's `anthropic_api_key` from the vault (ADR-0004), bu
 
 ## Next
 1. Vault lease with audit and contract tests, and a lease-backed key source.
-2. `rmcp` client probes (the MCP client side of P1-15/P1-13).
-3. The `host` schema, workflow definitions, `/v1/runs` and the three events (P3-06).
+2. The `host` schema, workflow definitions, `/v1/runs` and the three events (P3-06).
 
 ## Non-goals
 - No Sampling (deprecated); calls the model API directly
