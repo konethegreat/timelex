@@ -3497,6 +3497,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-mcp-host"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "timelex-vault",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "timelex-new-service"
 version = "0.1.0"
 

@@ -356,9 +356,11 @@ async fn nothing_a_client_chose_reaches_the_service_except_the_body() {
             "content-type",
             "content-length",
             "accept",
-            // The gateway continues the caller's trace (ADR-0016): it writes this header itself from
-            // the extracted context, so the client's exact value is never forwarded.
+            // The gateway continues the caller's trace (ADR-0016): it writes the W3C context
+            // headers itself from the extracted context, so the client's exact value is never
+            // forwarded. Whether they appear depends on whether this process installed telemetry.
             "traceparent",
+            "tracestate",
         ];
         for (name, value) in &seen.headers {
             assert!(
