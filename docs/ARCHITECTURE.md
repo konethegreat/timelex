@@ -69,6 +69,9 @@ manual quick-capture ────────┘          │ outbox → bus
 ## Events and the outbox
 A service writes the event envelope into `platform.outbox` in the same transaction as the state change it describes. A relay claims undelivered rows, publishes them at least once, and marks them; consumers dedupe on the envelope id, so a redelivery has one effect. `secret.*` is the first family. Envelopes are JSON Schema contracts mirrored by `timelex-types`, and never carry secret values. See [ADR-0014](adr/0014-transactional-outbox.md); the broker path is [ADR-0010](adr/0010-messaging-and-sync-contracts.md).
 
+## Audit chains
+Tenant-scoped audit entries are hash-chained by [`timelex-audit`](../crates/timelex-audit): each entry stores its predecessor's hash and its own SHA-256 over seq, microsecond time, kind, actor, subject and a non-secret detail, with a per-service domain tag. `verify` recomputes a full chain and returns its head; comparing that head with the separately stored anchor (`vault.chain_heads` today) also catches a tail rewritten with recomputed hashes. The vault hashes its secret audit rows through the library, and other services with an audit obligation use the same crate.
+
 ## MCP transport
 Services that serve MCP mount `timelex_mcp::router`. The adapter owns the only `rmcp` dependency (pinned exactly), requires explicit Origin and Host allow-lists and a non-zero body limit, turns off legacy sessions, requires per-request `_meta`, uses `NeverSessionManager`, and advertises only 2026-07-28. Its contract tests are a Rust port of the P1-08 probe script, so an SDK bump that changes transport behaviour fails CI. Task state, audit and events stay in the owning service's Postgres schema. See [ADR-0015](adr/0015-mcp-adapter.md).
 

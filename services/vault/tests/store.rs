@@ -10,10 +10,11 @@ use std::sync::{Arc, Mutex};
 
 use sqlx::Row;
 use time::{Duration, OffsetDateTime};
+use timelex_audit::{verify, StoredEntry};
 use timelex_db::testing::{setup as setup_db, ServiceUnderTest, TestDb};
 use timelex_db::TenantPool;
 use timelex_identity::{Permission, TenantId, UserId};
-use timelex_vault::{entry_hash, AuditAction, AuditRecord, LocalKeyWrapper, SecretId, SecretKind, GENESIS};
+use timelex_vault::{AuditAction, LocalKeyWrapper, SecretKind};
 use timelex_vault_service::{
     Actor, Clock, PutOutcome, PutSecretRequest, StoreError, TestOutcome, VaultStore, MIGRATIONS,
 };
@@ -94,8 +95,8 @@ fn request(value: &str) -> PutSecretRequest {
     }
 }
 
-/// Append-only audit chain verification: seqs are 1..n, each `prev_hash` is the hash before it, each
-/// `entry_hash` is what the domain crate computes, and the head names the last entry.
+/// Append-only audit chain verification: every stored row verifies with the shared audit library,
+/// and the separately stored head names the last entry.
 async fn assert_chain_verifies(db: &TestDb, tenant: TenantId) {
     let rows = sqlx::query(
         "SELECT seq, at, action, actor_id, secret_id, detail, prev_hash, entry_hash \
@@ -105,34 +106,32 @@ async fn assert_chain_verifies(db: &TestDb, tenant: TenantId) {
     .fetch_all(&db.admin)
     .await
     .unwrap();
-    let mut prev = GENESIS;
-    for (i, row) in rows.iter().enumerate() {
-        let seq: i64 = row.get("seq");
-        assert_eq!(seq, i as i64 + 1, "sequence numbers are contiguous");
-        let at: OffsetDateTime = row.get("at");
-        let action: String = row.get("action");
-        let detail: String = row.get("detail");
-        let record = AuditRecord {
-            seq,
-            at_micros: (at.unix_timestamp_nanos() / 1_000) as i64,
-            action: AuditAction::parse(&action).expect("stored action is known"),
-            actor: UserId::from_uuid(row.get("actor_id")),
-            secret: SecretId::from_uuid(row.get("secret_id")),
-            detail: &detail,
-        };
-        assert_eq!(
-            row.get::<Vec<u8>, _>("prev_hash"),
-            prev.to_vec(),
-            "entry {seq} links"
-        );
-        let hash = entry_hash(&prev, &record);
-        assert_eq!(
-            row.get::<Vec<u8>, _>("entry_hash"),
-            hash.to_vec(),
-            "entry {seq} hashes"
-        );
-        prev = hash;
+
+    fn hash(row: &sqlx::postgres::PgRow, column: &str) -> [u8; 32] {
+        let bytes: Vec<u8> = row.get(column);
+        bytes.try_into().expect("a 32-byte hash")
     }
+
+    let entries: Vec<StoredEntry> = rows
+        .iter()
+        .map(|row| {
+            let at: OffsetDateTime = row.get("at");
+            let action: String = row.get("action");
+            let action = AuditAction::parse(&action).expect("stored action is known");
+            StoredEntry {
+                seq: row.get("seq"),
+                at_micros: (at.unix_timestamp_nanos() / 1_000) as i64,
+                kind: action.as_str().to_string(),
+                actor: UserId::from_uuid(row.get("actor_id")),
+                subject: row.get("secret_id"),
+                detail: row.get("detail"),
+                prev_hash: hash(row, "prev_hash"),
+                entry_hash: hash(row, "entry_hash"),
+            }
+        })
+        .collect();
+    let head = verify("timelex-vault", &entries).expect("the stored chain verifies");
+
     let (head_seq, head_hash): (i64, Vec<u8>) =
         sqlx::query_as("SELECT seq, hash FROM vault.chain_heads WHERE tenant_id = $1")
             .bind(tenant.as_uuid())
@@ -140,7 +139,7 @@ async fn assert_chain_verifies(db: &TestDb, tenant: TenantId) {
             .await
             .unwrap();
     assert_eq!(head_seq, rows.len() as i64);
-    assert_eq!(head_hash, prev.to_vec());
+    assert_eq!(head_hash, head.to_vec());
 }
 
 // ---------- the acceptance path ----------
