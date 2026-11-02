@@ -145,8 +145,9 @@ impl Role {
                 TimeRead,
                 BillingRead,
                 AuditRead,
+                CaptureWrite,
             ],
-            Role::FeeEarner => &[TimeRead, TimeWrite],
+            Role::FeeEarner => &[TimeRead, TimeWrite, CaptureWrite],
             Role::Billing => &[TimeRead, BillingRead, BillingWrite],
             Role::Auditor => &[UsersRead, TimeRead, BillingRead, AuditRead],
             Role::Agent => &[CaptureWrite, TimeRead, TimeWrite],
@@ -281,6 +282,26 @@ mod tests {
                 ),
                 "auditor holds {}",
                 p.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn people_who_record_work_can_submit_captured_activity() {
+        // Manual quick capture is for the person who did the work (ADR-0022). An admin often records
+        // their own, and the first credential a firm receives is the admin's, so both hold it.
+        for role in [Role::FeeEarner, Role::Admin] {
+            assert!(
+                role.permissions().contains(&Permission::CaptureWrite),
+                "{} cannot submit captured activity",
+                role.as_str()
+            );
+        }
+        for role in [Role::Billing, Role::Auditor] {
+            assert!(
+                !role.permissions().contains(&Permission::CaptureWrite),
+                "{} unexpectedly submits captured activity",
+                role.as_str()
             );
         }
     }

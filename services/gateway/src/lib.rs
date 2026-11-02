@@ -1,10 +1,11 @@
 // Written by Kone Tshivhinda & Claude
 //! TimeLex gateway: walking skeleton.
 //!
-//! `GET /health` and `GET /v1/meta` are open. The gateway authenticates callers through the identity
-//! service, routes three identity operations and MCP `tools/call` by header ([`mcp`]), enforces a
-//! per-firm request budget and meters every handled request ([`proxy`]). Still to come: the outward
-//! MCP aggregate. See `docs/ARCHITECTURE.md` and ADR-0001/0003/0012/0013.
+//! `GET /health`, `GET /v1/meta` and the quick-capture page (`GET /capture`) are open. The gateway
+//! authenticates callers through the identity service, routes identity, vault and manual-capture
+//! operations and MCP `tools/call` by header ([`mcp`]), enforces a per-firm request budget and meters
+//! every handled request ([`proxy`]). Still to come: the outward MCP aggregate. See
+//! `docs/ARCHITECTURE.md` and ADR-0001/0003/0012/0013.
 
 pub mod config;
 mod limits;
@@ -12,8 +13,13 @@ mod mcp;
 mod meter;
 mod proxy;
 
-use axum::{http::StatusCode, response::Response, routing::get, Json, Router};
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::{Html, IntoResponse, Response};
+use axum::{routing::get, Json, Router};
 use serde::Serialize;
+
+/// The quick-capture form, served from the gateway so it shares an origin with the API.
+const QUICK_CAPTURE_PAGE: &str = include_str!("../assets/quick-capture.html");
 
 #[derive(Serialize)]
 struct Health {
@@ -58,7 +64,25 @@ pub fn app() -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/meta", get(meta))
+        .route("/capture", get(quick_capture))
         .fallback(not_found)
+}
+
+/// A self-contained form: no external asset can load, and nothing may frame it.
+async fn quick_capture() -> Response {
+    let mut response = Html(QUICK_CAPTURE_PAGE).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; \
+             connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        ),
+    );
+    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    response
 }
 
 async fn not_found() -> Response {
@@ -125,5 +149,29 @@ mod tests {
     async fn unknown_route_is_404() {
         let (status, _) = get_json("/nope").await;
         assert_eq!(status, 404);
+    }
+
+    #[tokio::test]
+    async fn quick_capture_page_is_self_contained_and_sends_to_the_capture_route() {
+        let response = app()
+            .oneshot(Request::builder().uri("/capture").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let headers = response.headers().clone();
+        assert_eq!(
+            headers[axum::http::header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(headers[axum::http::header::CACHE_CONTROL], "no-store");
+        let policy = headers["content-security-policy"].to_str().unwrap();
+        assert!(policy.contains("connect-src 'self'"), "{policy}");
+        assert!(policy.contains("frame-ancestors 'none'"), "{policy}");
+
+        let text =
+            String::from_utf8(response.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+        assert!(text.contains("Quick capture"));
+        assert!(text.contains("/v1/capture/entries"));
+        assert!(!text.contains('\u{2014}'), "UI copy uses no em dashes");
     }
 }

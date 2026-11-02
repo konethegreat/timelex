@@ -188,7 +188,7 @@ services:
     environment:
       TIMELEX_BINARY: /usr/local/bin/timelex-gateway
       TIMELEX_GATEWAY_ADDR: 0.0.0.0:8088
-      TIMELEX_SERVICE_URLS: identity=http://identity:8081,vault=http://vault:8082
+      TIMELEX_SERVICE_URLS: identity=http://identity:8081,vault=http://vault:8082,capture=http://capture:8084
       TIMELEX_LOG_FORMAT: json
       RUST_LOG: info
       # OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
@@ -200,6 +200,8 @@ services:
       identity:
         condition: service_healthy
       vault:
+        condition: service_healthy
+      capture:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/health"]

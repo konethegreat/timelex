@@ -1,34 +1,37 @@
 # Written by Kone Tshivhinda & Claude
-# Capture service contract v1 (draft). Contract-first: this file leads the code (ADR-0001).
-# Design: ADR-0021 (idempotent ingest, connector cursors, replay). Events: contracts/events/.
+# Capture service contract v1 (draft 0.2.0). Contract-first: this file leads the code (ADR-0001).
+# Design: ADR-0021 (idempotent ingest, connector cursors, replay), ADR-0022 (manual quick capture).
 openapi: 3.1.0
 info:
   title: TimeLex Capture
-  version: 0.1.0
-  summary: Idempotent ingest of activity events from connectors and the desktop agent (pre-alpha).
+  version: 0.2.0
+  summary: Idempotent ingest of activity events from connectors, the desktop agent and manual capture (pre-alpha).
   description: |
     Pre-alpha. The capture hub normalises a raw work signal into one immutable activity event
     (ADR-0006) and stores it exactly once. A connector fetches from its own system, builds the event
     and posts it here; the service decides whether the signal is new. Real Microsoft 365 and Google
-    connectors arrive with P2-03 and P2-05; manual quick capture with P2-08.
+    connectors arrive with P2-03 and P2-05. Since 0.2.0 a person can also record work by hand:
+    `POST /v1/entries` derives the event from a short form (ADR-0022) and the gateway exposes it at
+    `POST /v1/capture/entries`.
 
     **Why a caller can post the same event twice.** Every event carries a canonical `id` derived from
     the firm, the source system, the source id and the start instant ([the id rule](../events/README.md)).
     Delivering the same signal twice produces the same `id`, so the second delivery finds the stored
     row and changes nothing: the event is stored once and `activity.recorded` is published once
     (ADR-0014). A delivery that claims a new `id` is rejected unless the `id` is the one its content
-    implies, so a sender cannot force a second copy.
+    implies, so a sender cannot force a second copy. A manual entry carries the caller's own
+    `entryId`, which is that signal's source id: a retry after a lost response is the same signal.
 
     **Callers.** Only the gateway reaches this service, over a private interface, with an *internal
     token* signed by the gateway (ADR-0012). Every ingest requires a token of kind `principal` whose
     holder has the `capture:write` permission; the firm, user and permissions come from the verified
-    token, never from the request. A token of the wrong kind or without the permission is 403. The
+    token, never from the request. A token of the wrong kind or without the permission is 403. An
     event's `tenantId` must name the caller's firm and its `actor.userId` must be the caller (400 and
-    403 respectively).
+    403 respectively). A manual entry does not name either: both come from the token.
 
-    **Not routed yet.** The gateway does not expose `/v1/events` until the first public caller arrives
-    (P2-08). Until then this contract describes the service's private interface, which the connectors
-    and the desktop agent use directly in development.
+    **Public path.** `/v1/entries` is the service's private path; the only public route in 0.2.0 is
+    the gateway's `POST /v1/capture/entries`. `/v1/events` stays private until a connector is deployed
+    behind the gateway (P2-03).
 
     **Versioning.** `schemaVersion` is the event's version, not this contract's. This build reads
     every `1.x`; a `2.x` event is a 400. See [event contracts](../events/README.md).
@@ -41,6 +44,8 @@ servers:
 tags:
   - name: events
     description: Record an activity event exactly once.
+  - name: entries
+    description: Record work by hand when no connector saw it.
 paths:
   /health:
     get:
@@ -99,6 +104,54 @@ paths:
               schema: { $ref: "#/components/schemas/IngestResult" }
         "200":
           description: The same signal was delivered before; nothing changed.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/entries:
+    post:
+      tags: [entries]
+      operationId: createEntry
+      summary: Record work by hand (idempotent)
+      description: |
+        Builds an activity event from the form and stores it exactly once. The firm, the user and
+        `capturedAt` come from the verified token and the server clock. `description` becomes
+        `subject.title` with runs of whitespace collapsed to one line, and is the only free text
+        kept; `privacy.contentCaptured` is always false, so a quick capture stores metadata, never
+        content. Nothing else in the event can be chosen by the caller.
+
+        `entryId` is the caller's idempotency key and becomes the event's `source.sourceId`, so
+        repeating the request with the same `entryId` and `startedAt` answers 200 and changes nothing.
+        A retry after a lost response is therefore safe. The kinds a person may capture are `call`,
+        `meeting` and `manual_entry`; everything else has an automated source.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: capture:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualEntry" }
+      responses:
+        "201":
+          description: The entry became a new activity event.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        "200":
+          description: The same entry was delivered before; nothing changed.
           headers:
             Cache-Control:
               description: Always `no-store`.
@@ -192,6 +245,26 @@ components:
         created:
           type: boolean
           description: True when this delivery stored the event; false when it was already stored.
+    ManualEntry:
+      type: object
+      description: What a person submits for quick capture. The server derives the event.
+      required: [entryId, kind, startedAt, endedAt]
+      additionalProperties: false
+      properties:
+        entryId:
+          type: string
+          format: uuid
+          description: The caller's idempotency key. Any accepted UUID spelling; the same key and start is the same signal.
+        kind:
+          type: string
+          enum: [call, meeting, manual_entry]
+          description: What the person did. `manual_entry` covers work that fits no other kind.
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        description:
+          type: string
+          maxLength: 500
+          description: Optional short description, stored as `subject.title`. Whitespace is collapsed to one line.
     Problem:
       description: RFC 9457 problem details (standard error body for all services).
       type: object

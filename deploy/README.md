@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 ## The local development stack
 
-`docker-compose.yml` runs the Phase 1 stack, all bound to loopback:
+`docker-compose.yml` runs the Phase 1 services and the Phase 2 capture service, all bound to loopback:
 
 | Service | What it is | Where it listens |
 |---|---|---|
@@ -38,7 +38,17 @@ curl -sS -X POST http://127.0.0.1:8088/v1/tenants \
   -d '{"slug":"example-attorneys","displayName":"Example Attorneys Inc","adminEmail":"partner@example-attorneys.example","adminDisplayName":"Pat Partner"}'
 ```
 
-The response carries `initialApiKey.token` once; use it as the tenant's bearer token. Request counters are on the gateway's loopback-only listener inside the container:
+The response carries `initialApiKey.token` once; use it as the tenant's bearer token. Open `http://127.0.0.1:8088/capture` on a phone-sized window, paste the token into the connection panel and save an entry; or call the API directly. The same `entryId` on a retry returns the existing event rather than a second one:
+
+```bash
+API_KEY=...   # the tenant's initialApiKey.token
+curl -sS -X POST http://127.0.0.1:8088/v1/capture/entries \
+  -H "authorization: Bearer $API_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"entryId":"7f6a1c2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b","kind":"call","startedAt":"2026-11-02T09:00:00Z","endedAt":"2026-11-02T09:20:00Z","description":"Call with the client about the lease"}'
+```
+
+Request counters are on the gateway's loopback-only listener inside the container:
 
 ```bash
 docker compose -f deploy/docker-compose.yml exec gateway curl -s http://127.0.0.1:8089/internal/usage
@@ -56,7 +66,7 @@ The host ports are deliberately non-default (`55433` for Postgres, `9100` for S3
 
 ### Logs and traces
 
-The three services write one JSON record per event (`TIMELEX_LOG_FORMAT=json`) at `RUST_LOG=info`, with sensitive field names and bearer tokens redacted before formatting. `docker compose logs gateway identity vault` shows them together.
+The services write one JSON record per event (`TIMELEX_LOG_FORMAT=json`) at `RUST_LOG=info`, with sensitive field names and bearer tokens redacted before formatting. `docker compose logs gateway identity vault capture` shows them together.
 
 Traces and metrics are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Point it at a collector running on the host (for example `http://host.docker.internal:4318` for OTLP/HTTP) and uncomment the line for the service you are debugging. Without it the services still share one trace id per request, so a log line in the gateway and the line for the same request in the vault carry the same id; nothing leaves the machine. See [ADR-0016](../docs/adr/0016-telemetry-kit.md).
 
@@ -66,7 +76,7 @@ Traces and metrics are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. 
 
 ## Building the image
 
-The repository [`Dockerfile`](../Dockerfile) builds one image with the gateway, identity and vault binaries; compose selects one with `TIMELEX_BINARY`. It is a full release build with BuildKit cache mounts for the Cargo registry and `target`, so dependency compiles are reused between builds while a clean build takes several minutes. Use `cargo run` while iterating and let compose verify integration.
+The repository [`Dockerfile`](../Dockerfile) builds one image with the gateway, identity, vault and capture binaries; compose selects one with `TIMELEX_BINARY`. It is a full release build with BuildKit cache mounts for the Cargo registry and `target`, so dependency compiles are reused between builds while a clean build takes several minutes. Use `cargo run` while iterating and let compose verify integration.
 
 ## Running services by hand
 
@@ -82,11 +92,14 @@ cargo run -p timelex-gateway -- keygen           # prints a key pair: put the li
 #   TIMELEX_MIGRATOR_DATABASE_URL=postgres://timelex_migrator@127.0.0.1:55433/timelex
 #   TIMELEX_IDENTITY_DATABASE_URL=postgres://svc_identity@127.0.0.1:55433/timelex
 #   TIMELEX_VAULT_DATABASE_URL=postgres://svc_vault@127.0.0.1:55433/timelex
+#   TIMELEX_CAPTURE_DATABASE_URL=postgres://svc_capture@127.0.0.1:55433/timelex
 cargo run -p timelex-identity-service -- migrate
 cargo run -p timelex-vault-service -- migrate
+cargo run -p timelex-capture-service -- migrate
 cargo run -p timelex-identity-service             # 127.0.0.1:8081
 cargo run -p timelex-vault-service                # 127.0.0.1:8082, needs TIMELEX_VAULT_MASTER_KEY
+cargo run -p timelex-capture-service              # 127.0.0.1:8084
 cargo run -p timelex-gateway                      # 127.0.0.1:8088
 ```
 
-Environment variables are documented in `services/gateway/src/config.rs`, `services/identity/src/main.rs` and `services/vault/src/main.rs`. The gateway reads service addresses from `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`), the firm budget from `TIMELEX_RATE_LIMIT_PER_MINUTE` and `TIMELEX_RATE_LIMIT_BURST`, and binds the usage listener on `TIMELEX_GATEWAY_INTERNAL_ADDR`; keep that address on loopback.
+Environment variables are documented in `services/gateway/src/config.rs`, `services/identity/src/main.rs` and `services/vault/src/main.rs`. The gateway reads service addresses from `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`; add `vault=http://127.0.0.1:8082` and `capture=http://127.0.0.1:8084` to enable those routes), the firm budget from `TIMELEX_RATE_LIMIT_PER_MINUTE` and `TIMELEX_RATE_LIMIT_BURST`, and binds the usage listener on `TIMELEX_GATEWAY_INTERNAL_ADDR`; keep that address on loopback.

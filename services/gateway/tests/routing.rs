@@ -256,7 +256,6 @@ async fn authenticate_is_not_reachable_from_outside() {
 }
 
 // ---------- tenant routes: what identity receives ----------
-
 #[tokio::test]
 async fn a_tenant_call_is_authenticated_then_forwarded_with_a_principal_token() {
     let s = stub(happy).await;
@@ -319,6 +318,53 @@ async fn a_tenant_call_is_authenticated_then_forwarded_with_a_principal_token() 
     }
     // The URL never carries the key.
     assert!(!fwd.path.contains("tlx_"));
+}
+
+#[tokio::test]
+async fn a_quick_capture_entry_goes_to_capture_not_identity_and_keeps_the_body() {
+    let s = stub(happy).await;
+    let url = format!("http://{}", s.addr);
+    let gw = gateway_services(
+        &[("identity", url.clone()), ("capture", url)],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let body = json!({
+        "entryId": "0191a2b3-c4d5-7e6f-8a9b-0c1d2e3f4a5b",
+        "kind": "call",
+        "startedAt": "2026-11-02T09:00:00Z",
+        "endedAt": "2026-11-02T09:20:00Z",
+        "description": "Call with the Deeds Office",
+    })
+    .to_string();
+
+    let r = post_as(&gw.app, "/v1/capture/entries", TENANT_KEY.as_str(), Some(&body)).await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+
+    let calls = s.calls();
+    assert_eq!(calls.len(), 2, "one authenticate, one forward");
+    assert_eq!(calls[0].path, "/v1/authenticate");
+    let fwd = &calls[1];
+    assert_eq!(
+        (fwd.method.as_str(), fwd.path.as_str()),
+        ("POST", "/v1/entries"),
+        "the public path is not the service's path"
+    );
+    assert_eq!(fwd.body, body);
+    let verified = gw
+        .verifier("capture")
+        .verify(
+            fwd.header("authorization")
+                .unwrap()
+                .strip_prefix("Bearer ")
+                .unwrap(),
+        )
+        .unwrap();
+    match verified.caller {
+        Caller::Principal(p) => assert_eq!(p.tenant.as_uuid(), Uuid::from_u128(11)),
+        other => panic!("expected a principal, got {other:?}"),
+    }
 }
 
 #[tokio::test]

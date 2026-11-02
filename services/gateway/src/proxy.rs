@@ -91,6 +91,7 @@ pub fn routes(state: GatewayState) -> Router {
         .route("/v1/secrets/{key}", put(put_secret).delete(revoke_secret))
         .route("/v1/secrets/{id}/test", post(test_secret))
         .route("/v1/secrets/{id}/rotate", post(rotate_secret))
+        .route("/v1/capture/entries", post(capture_entry))
         .route("/mcp", post(mcp))
         .with_state(state)
 }
@@ -637,6 +638,24 @@ const SECRET_KINDS: [&str; 4] = [
     "google_oauth",
     "generic_api_key",
 ];
+
+/// `POST /v1/capture/entries`: manual quick capture. The caller is the person whose work it is; the
+/// capture service derives the event and stores it once.
+async fn capture_entry(State(s): State<GatewayState>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "capture.entry",
+            service: "capture",
+            method: Method::POST,
+            path: Some("/v1/entries".into()),
+            invalid: "the request is not valid",
+        },
+        req,
+    )
+    .await
+}
 
 async fn list_secrets(State(s): State<GatewayState>, req: Request) -> Response {
     // The only query this route has. It is accepted only in its canonical form, so nothing else a

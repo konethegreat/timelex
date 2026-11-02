@@ -88,6 +88,30 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/v1/capture/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record work by hand (manual quick capture)
+         * @description Routed to capture. Requires `capture:write`. The firm and user come from the API key, never
+         *     from the request, and the server clock supplies `capturedAt`. Same request and response as
+         *     `capture.v1.yaml` `createEntry`: 201 stores a new activity event, and 200 means the same
+         *     `entryId` was delivered before, so a retry is safe. Kinds a person may capture are `call`,
+         *     `meeting` and `manual_entry`.
+         */
+        post: operations["createEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/meta": {
         parameters: {
             query?: never;
@@ -235,6 +259,12 @@ export type components = {
             slug: components["schemas"]["TenantSlug"];
             tenantId: components["schemas"]["Uuid"];
         };
+        IngestResult: {
+            /** @description True when this delivery stored the event; false when it was already stored. */
+            created: boolean;
+            /** @description The event's canonical id, echoed so a sender can record what the service kept. */
+            id: string;
+        };
         IssueApiKeyRequest: {
             /**
              * Format: date-time
@@ -260,6 +290,25 @@ export type components = {
             /** @description The full secret, shown once. Format `tlx_<32 hex tenant id>.<43 characters>`. Treat as a password. */
             token: string;
             userId: components["schemas"]["Uuid"];
+        };
+        /** @description What a person submits for quick capture. The server derives the event. */
+        ManualEntry: {
+            /** @description Optional short description, stored as `subject.title`. Whitespace is collapsed to one line. */
+            description?: string;
+            /** Format: date-time */
+            endedAt: string;
+            /**
+             * Format: uuid
+             * @description The caller's idempotency key. Any accepted UUID spelling; the same key and start is the same signal.
+             */
+            entryId: string;
+            /**
+             * @description What the person did. `manual_entry` covers work that fits no other kind.
+             * @enum {string}
+             */
+            kind: "call" | "meeting" | "manual_entry";
+            /** Format: date-time */
+            startedAt: string;
         };
         /**
          * @description One thing that can be done. Also the vocabulary of API-key scopes.
@@ -564,6 +613,46 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["BadGateway"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    createEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEntry"];
+            };
+        };
+        responses: {
+            /** @description The same entry was delivered before; nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResult"];
+                };
+            };
+            /** @description The entry became a new activity event. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResult"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["TooLarge"];
             429: components["responses"]["RateLimited"];
             502: components["responses"]["BadGateway"];
             504: components["responses"]["GatewayTimeout"];
