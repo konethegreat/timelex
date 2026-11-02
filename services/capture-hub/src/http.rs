@@ -20,12 +20,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use serde_json::json;
+use time::OffsetDateTime;
 use timelex_auth::{Caller, Principal, Verifier};
 use timelex_types::{supports_activity_schema_version, ActivityEvent};
 use uuid::Uuid;
 
 use crate::error::StoreError;
-use crate::store::{Actor, CaptureStore, IngestOutcome};
+use crate::manual::{self, Entry};
+use crate::store::{Actor, CaptureStore, Clock, IngestOutcome};
 
 /// Largest request body accepted (also enforced at the gateway).
 pub const MAX_BODY_BYTES: usize = 64 * 1024;
@@ -35,18 +37,26 @@ pub const MAX_BODY_BYTES: usize = 64 * 1024;
 pub struct AppState {
     store: CaptureStore,
     verifier: Arc<Verifier>,
+    clock: Clock,
 }
 
 /// Build the router. Kept apart from `main` so tests can call it without a socket.
 pub fn router(store: CaptureStore, verifier: Verifier) -> Router {
+    router_with_clock(store, verifier, Arc::new(OffsetDateTime::now_utc))
+}
+
+/// The router with an injected clock, so a manual entry's `capturedAt` is testable.
+pub fn router_with_clock(store: CaptureStore, verifier: Verifier, clock: Clock) -> Router {
     let router = Router::new()
         .route("/health", get(health))
         .route("/v1/events", post(ingest_event))
+        .route("/v1/entries", post(capture_entry))
         .fallback(|| async { ApiError::NotFound })
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(AppState {
             store,
             verifier: Arc::new(verifier),
+            clock,
         });
     timelex_telemetry::instrument(router, "capture")
 }
@@ -221,17 +231,23 @@ async fn ingest_event(
     event.tenant_id = format!("tn_{}", caller.0.tenant.to_hex32());
     event.actor.user_id = format!("us_{}", caller.0.user.as_uuid().simple());
 
-    let outcome = state
-        .store
-        .ingest(
-            Actor {
-                tenant: caller.0.tenant,
-                user: caller.0.user,
-                permissions: caller.0.permissions,
-            },
-            event,
-        )
-        .await?;
+    store_and_reply(&state, Actor::from(&caller.0), event).await
+}
+
+/// `POST /v1/entries`: a person records work no connector can see.
+async fn capture_entry(
+    State(state): State<AppState>,
+    caller: Verified,
+    Body(entry): Body<Entry>,
+) -> Result<Response, ApiError> {
+    let event = manual::build_event(caller.0.tenant, caller.0.user, entry, (state.clock)())?;
+    store_and_reply(&state, Actor::from(&caller.0), event).await
+}
+
+/// Store one event for a user and answer with what the store decided. The first delivery is 201;
+/// a duplicate is 200 with `created: false`.
+async fn store_and_reply(state: &AppState, actor: Actor, event: ActivityEvent) -> Result<Response, ApiError> {
+    let outcome = state.store.ingest(actor, event).await?;
     let status = match outcome.outcome {
         IngestOutcome::Created => StatusCode::CREATED,
         IngestOutcome::Existing => StatusCode::OK,

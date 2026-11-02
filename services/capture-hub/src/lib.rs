@@ -18,6 +18,7 @@
 mod connector;
 mod error;
 pub mod http;
+pub mod manual;
 mod store;
 
 pub use connector::{Connector, ConnectorError, Page, RunReport, Runner, RunnerError};

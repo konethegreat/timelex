@@ -53,7 +53,7 @@ async fn env() -> Option<Env> {
     let keys = generate_keypair().unwrap();
     let signer = Signer::from_base64("test-key", &keys.private_pkcs8_base64).unwrap();
     let verifier = Verifier::from_config("capture", &format!("test-key={}", keys.public_base64)).unwrap();
-    let app = http::router(store, verifier);
+    let app = http::router_with_clock(store, verifier, clock.clock());
     Some(Env {
         db,
         app,
@@ -337,4 +337,155 @@ async fn health_answers() {
     let (status, body) = send(env.app.clone(), request).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
+}
+
+// ---------- P2-08: manual quick capture ----------
+
+fn entry_body(env: &Env, entry_id: &str, kind: &str) -> serde_json::Value {
+    let end = *env.clock.0.lock().unwrap() - Duration::minutes(1);
+    let start = end - Duration::minutes(20);
+    let rfc3339 = time::format_description::well_known::Rfc3339;
+    serde_json::json!({
+        "entryId": entry_id,
+        "kind": kind,
+        "startedAt": start.format(&rfc3339).unwrap(),
+        "endedAt": end.format(&rfc3339).unwrap(),
+        "description": "Call with the Deeds Office",
+    })
+}
+
+fn post_entry(body: &serde_json::Value, token: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/v1/entries")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::from(serde_json::to_vec(body).unwrap()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_manual_entry_is_stored_as_an_activity_event() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let entry_id = Uuid::new_v4();
+
+    let (status, body) = send(
+        env.app.clone(),
+        post_entry(&entry_body(&env, &entry_id.to_string(), "call"), &token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["created"], true);
+    assert!(
+        body["id"].as_str().is_some_and(|id| id.starts_with("ae_")),
+        "{body}"
+    );
+
+    let stored: (String, String, String, String, String) = sqlx::query_as(
+        "SELECT source_system, kind, event->'subject'->>'title', \
+                event->'privacy'->>'contentCaptured', event->'source'->>'sourceId' \
+         FROM capture.activity_events WHERE tenant_id = $1",
+    )
+    .bind(env.tenant.as_uuid())
+    .fetch_one(&env.db.admin)
+    .await
+    .unwrap();
+    assert_eq!(stored.0, "manual");
+    assert_eq!(stored.1, "call");
+    assert_eq!(stored.2, "Call with the Deeds Office");
+    assert_eq!(stored.3, "false");
+    assert_eq!(stored.4, entry_id.simple().to_string());
+}
+
+#[tokio::test]
+async fn a_retried_manual_entry_is_stored_once() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let request = entry_body(&env, &Uuid::new_v4().to_string(), "meeting");
+
+    let (first, first_body) = send(env.app.clone(), post_entry(&request, &token)).await;
+    let (second, second_body) = send(env.app.clone(), post_entry(&request, &token)).await;
+
+    assert_eq!(first, StatusCode::CREATED, "{first_body}");
+    assert_eq!(second, StatusCode::OK, "{second_body}");
+    assert_eq!(second_body["created"], false);
+    assert_eq!(first_body["id"], second_body["id"]);
+    assert_eq!(count_events(&env.db, env.tenant).await, 1);
+}
+
+#[tokio::test]
+async fn a_manual_entry_without_capture_write_is_forbidden() {
+    let Some(env) = env().await else { return };
+    let token = token_for(&env, &Caller::Principal(principal(&env, &[Permission::TimeRead])));
+    let request = entry_body(&env, &Uuid::new_v4().to_string(), "manual_entry");
+
+    let (status, body) = send(env.app.clone(), post_entry(&request, &token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(count_events(&env.db, env.tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_manual_entry_that_ends_before_it_starts_is_rejected() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let mut request = entry_body(&env, &Uuid::new_v4().to_string(), "call");
+    let rfc3339 = time::format_description::well_known::Rfc3339;
+    let started = OffsetDateTime::parse(request["startedAt"].as_str().unwrap(), &rfc3339).unwrap();
+    request["endedAt"] = (started - Duration::seconds(1)).format(&rfc3339).unwrap().into();
+
+    let (status, body) = send(env.app.clone(), post_entry(&request, &token)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(count_events(&env.db, env.tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_kind_a_person_cannot_capture_is_rejected() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let request = entry_body(&env, &Uuid::new_v4().to_string(), "email_sent");
+
+    let (status, _) = send(env.app.clone(), post_entry(&request, &token)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn an_unknown_entry_field_is_rejected() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let mut request = entry_body(&env, &Uuid::new_v4().to_string(), "call");
+    request["matterId"] = "mt_synthetic".into();
+
+    let (status, _) = send(env.app.clone(), post_entry(&request, &token)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_description_over_the_limit_is_rejected() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let mut request = entry_body(&env, &Uuid::new_v4().to_string(), "manual_entry");
+    request["description"] = "a".repeat(501).into();
+
+    let (status, body) = send(env.app.clone(), post_entry(&request, &token)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(count_events(&env.db, env.tenant).await, 0);
 }

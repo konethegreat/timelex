@@ -10,7 +10,7 @@
 
 </div>
 
-> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
+> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, and a person can record a call, meeting or note by hand at `/capture`, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
 
 ## Why this exists
 

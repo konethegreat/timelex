@@ -58,5 +58,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0019](adr/0019-mcp-client-rules.md) | The host's MCP client rules | Accepted |
 | [0020](adr/0020-workload-identity-and-leases.md) | Workload identity and short-lived key leases | Accepted |
 | [0021](adr/0021-idempotent-capture-and-replay.md) | Idempotent capture, connector cursors and replay | Accepted |
+| [0022](adr/0022-manual-quick-capture.md) | Manual quick capture: an entry becomes an activity event | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

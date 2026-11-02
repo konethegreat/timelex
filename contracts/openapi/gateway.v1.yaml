@@ -1,17 +1,18 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (draft 0.4.0). Contract-first: this file leads the code (ADR-0001).
-# Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml, vault.v1.yaml.
+# Gateway contract v1 (draft 0.5.0). Contract-first: this file leads the code (ADR-0001).
+# Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml, vault.v1.yaml, capture.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.4.0
+  version: 0.5.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
     Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway authenticates callers and
     routes three identity operations (`createTenant`, `issueApiKey`, `revokeApiKey`). Since 0.3.0 it
     also enforces per-firm request limits, records usage metadata and routes MCP `tools/call` requests
     by header. Since 0.4.0 it routes the five vault secrets operations, so a firm's admin can store,
-    list, test, rotate and revoke provider keys without reaching the vault directly. Everything else
+    list, test, rotate and revoke provider keys without reaching the vault directly. Since 0.5.0 it
+    routes manual quick capture, so a person can record work no connector saw. Everything else
     arrives with its service. Every capability is also exposed as MCP tools; see
     `contracts/mcp/tools.md`.
 
@@ -368,6 +369,39 @@ paths:
         "413": { $ref: "#/components/responses/TooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "501": { $ref: "#/components/responses/NotImplemented" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/capture/entries:
+    post:
+      operationId: createEntry
+      summary: Record work by hand (manual quick capture)
+      description: |
+        Routed to capture. Requires `capture:write`. The firm and user come from the API key, never
+        from the request, and the server clock supplies `capturedAt`. Same request and response as
+        `capture.v1.yaml` `createEntry`: 201 stores a new activity event, and 200 means the same
+        `entryId` was delivered before, so a retry is safe. Kinds a person may capture are `call`,
+        `meeting` and `manual_entry`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "capture.v1.yaml#/components/schemas/ManualEntry" }
+      responses:
+        "201":
+          description: The entry became a new activity event.
+          content:
+            application/json:
+              schema: { $ref: "capture.v1.yaml#/components/schemas/IngestResult" }
+        "200":
+          description: The same entry was delivered before; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "capture.v1.yaml#/components/schemas/IngestResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
 components:

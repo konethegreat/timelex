@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f7f4ee">
+<title>Quick capture | TimeLex</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f7f4ee;
+    --ink: #1c2422;
+    --muted: #5b6561;
+    --line: #d8d2c5;
+    --accent: #0f5c52;
+    --accent-dark: #0b4a41;
+    --danger: #8a2b21;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: max(22px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .sheet { width: min(100%, 34rem); margin: 0 auto; }
+  .masthead { padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .wordmark {
+    margin: 0 0 26px;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    margin: 0;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: clamp(2rem, 8vw, 2.6rem);
+    font-weight: 600;
+    letter-spacing: -.015em;
+  }
+  .lede { margin: 8px 0 0; max-width: 28rem; color: var(--muted); }
+  form { padding-top: 22px; }
+  .kinds {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 0 0 20px;
+    padding: 0;
+    border: 0;
+  }
+  .kinds label { position: relative; cursor: pointer; }
+  .kinds input { position: absolute; inset: 0; margin: 0; opacity: 0; }
+  .kinds span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    font-size: .95rem;
+    font-weight: 500;
+  }
+  .kinds input:checked + span { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .kinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .times { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  label {
+    display: block;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  input[type="datetime-local"], input[type="password"], textarea {
+    width: 100%;
+    margin-top: 6px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+  textarea { min-height: 84px; resize: vertical; }
+  input:focus, textarea:focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field { margin: 0 0 6px; }
+  .count { margin: 0 0 18px; text-align: right; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  button#save {
+    width: 100%;
+    min-height: 52px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    letter-spacing: .02em;
+    cursor: pointer;
+  }
+  button#save:hover { background: var(--accent-dark); }
+  button#save:disabled { opacity: .6; cursor: progress; }
+  button#save:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  #result {
+    display: block;
+    min-height: 1.5rem;
+    margin-top: 14px;
+    padding-left: 12px;
+    border-left: 3px solid transparent;
+    font-size: .92rem;
+    color: var(--muted);
+  }
+  #result[data-state="ok"] { border-left-color: var(--accent); color: var(--ink); }
+  #result[data-state="error"] { border-left-color: var(--danger); color: var(--danger); }
+  .connection { margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line); }
+  summary {
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .connection .field { margin-top: 14px; }
+  .hint { margin: 8px 0 10px; font-size: .8rem; color: var(--muted); }
+  button.quiet {
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  button.quiet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  footer { margin-top: 28px; font-size: .78rem; color: var(--muted); }
+  footer p { margin: 0; }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  @media (max-width: 359px) { .times { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main class="sheet">
+  <header class="masthead">
+    <p class="wordmark">TimeLex</p>
+    <h1>Quick capture</h1>
+    <p class="lede">Record work no connector saw. Each entry becomes one activity event.</p>
+  </header>
+
+  <form id="entry" novalidate>
+    <fieldset class="kinds">
+      <legend class="visually-hidden">Kind of work</legend>
+      <label><input type="radio" name="kind" value="call" checked><span>Call</span></label>
+      <label><input type="radio" name="kind" value="meeting"><span>Meeting</span></label>
+      <label><input type="radio" name="kind" value="manual_entry"><span>Note</span></label>
+    </fieldset>
+
+    <div class="times">
+      <label>Started
+        <input id="start" type="datetime-local" required>
+      </label>
+      <label>Ended
+        <input id="end" type="datetime-local" required>
+      </label>
+    </div>
+
+    <label class="field" for="description">What did you do?</label>
+    <textarea id="description" rows="3" maxlength="500" placeholder="Call with the Deeds Office"></textarea>
+    <p class="count"><span id="count">0</span> / 500</p>
+
+    <button id="save" type="submit">Save entry</button>
+    <output id="result" role="status" aria-live="polite"></output>
+  </form>
+
+  <details id="connection" class="connection" open>
+    <summary>Connection</summary>
+    <label class="field" for="key">API key</label>
+    <input id="key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="tlx_...">
+    <p class="hint">Kept in this page while it is open. A reload forgets it.</p>
+    <button id="forget" class="quiet" type="button">Forget key</button>
+  </details>
+
+  <footer>
+    <p>Pre-alpha. An entry stores its times, a kind and your short description. Nothing else is kept.</p>
+  </footer>
+</main>
+<script>
+(function () {
+  'use strict';
+  var form = document.getElementById('entry');
+  var start = document.getElementById('start');
+  var end = document.getElementById('end');
+  var description = document.getElementById('description');
+  var count = document.getElementById('count');
+  var key = document.getElementById('key');
+  var connection = document.getElementById('connection');
+  var result = document.getElementById('result');
+  var save = document.getElementById('save');
+  var pending = { signature: null, id: null };
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function toInput(date) {
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+      'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  }
+  function setWindow() {
+    var finish = new Date();
+    finish.setSeconds(0, 0);
+    start.value = toInput(new Date(finish.getTime() - 15 * 60000));
+    end.value = toInput(finish);
+  }
+  function updateCount() { count.textContent = String(description.value.length); }
+  function say(message, state) {
+    result.textContent = message;
+    result.dataset.state = state || '';
+  }
+  function span(from, to) {
+    var minutes = Math.round((to - from) / 60000);
+    if (minutes < 60) return minutes + ' min';
+    return Math.floor(minutes / 60) + ' h ' + (minutes % 60) + ' min';
+  }
+  function newId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    var bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    var hex = Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' +
+      hex.slice(16, 20) + '-' + hex.slice(20);
+  }
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    var began = new Date(start.value);
+    var finished = new Date(end.value);
+    if (Number.isNaN(began.getTime()) || Number.isNaN(finished.getTime())) {
+      say('Choose a start and an end.', 'error');
+      return;
+    }
+    if (finished < began) {
+      say('The end cannot be before the start.', 'error');
+      return;
+    }
+    var secret = key.value.trim();
+    if (!secret) {
+      connection.open = true;
+      key.focus();
+      say('Enter your API key under Connection.', 'error');
+      return;
+    }
+
+    var chosen = form.querySelector('input[name="kind"]:checked');
+    var kind = chosen ? chosen.value : 'manual_entry';
+    var text = description.value.trim();
+    var signature = [kind, start.value, end.value, text].join('\u0000');
+    if (pending.signature !== signature) {
+      pending = { signature: signature, id: newId() };
+    }
+
+    save.disabled = true;
+    say('Saving...', '');
+    try {
+      var response = await fetch('/v1/capture/entries', {
+        method: 'POST',
+        headers: {
+          'authorization': 'Bearer ' + secret,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          entryId: pending.id,
+          kind: kind,
+          startedAt: began.toISOString(),
+          endedAt: finished.toISOString(),
+          description: text || undefined
+        })
+      });
+      var problem = null;
+      try { problem = await response.json(); } catch (e) { /* no body */ }
+      if (response.ok) {
+        var already = problem !== null && problem.created === false;
+        say(already ? 'Already saved. Nothing changed.' : 'Saved ' + span(began, finished) + ' of work.', 'ok');
+        pending = { signature: null, id: null };
+        description.value = '';
+        connection.open = false;
+        updateCount();
+        setWindow();
+      } else if (response.status === 401) {
+        connection.open = true;
+        say('The API key was not accepted. Check it and try again.', 'error');
+      } else {
+        var detail = problem !== null && (problem.detail || problem.title);
+        say(detail || 'Not saved (' + response.status + '). Check the entry and try again.', 'error');
+      }
+    } catch (e) {
+      say('Not sent. Check the connection, then save again. The same entry is never stored twice.', 'error');
+    } finally {
+      save.disabled = false;
+    }
+  });
+
+  document.getElementById('forget').addEventListener('click', function () {
+    key.value = '';
+    key.focus();
+    say('Key cleared. Enter it again to save.', '');
+  });
+  description.addEventListener('input', updateCount);
+
+  setWindow();
+  updateCount();
+})();
+</script>
+</body>
+</html>
