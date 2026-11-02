@@ -9,7 +9,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 2. **T0-B01** Five fee-earner interviews: how time is recorded today and what they would let a machine post.
 3. **P1-01 → P1-03** Postgres schemas and roles, tenancy with row-level security, identity.
 4. ~~P1-08~~ Server side verified 20 Oct 2026 ([research 08](research/08-mcp-rust-sdk-spike.md)); ~~P1-15~~ adapter crate with contract tests done 1 Nov 2026 ([ADR-0015](adr/0015-mcp-adapter.md)). Next: wire the services to the adapter as their MCP tools land; **T0-L05** send Anthropic the written questions.
-5. **P3-01** Start the synthetic gold-set generator now; it is the long pole for Gate A.
+5. ~~P3-01~~ Synthetic gold set landed 2 Nov 2026 (220 labelled events, drift-checked in CI). Next: **P3-03** segmentation and **P3-04** minimal matters.
 
 ## Phase 0: Foundations
 | ID | Task | After | Status |
@@ -82,7 +82,7 @@ Legend: ✅ done · 🔄 in progress · ⬜ not started. `P#-##` build tasks; `T
 ## Phase 3: Understand (Gate A)
 | ID | Task | After | Acceptance | Status |
 |---|---|---|---|---|
-| P3-01 | Synthetic gold-set generator (`eval/`): firm, clients, matters, threads, calendars, labels | | Deterministic seed; public | ⬜ |
+| P3-01 | Synthetic gold-set generator (`eval/`): firm, clients, matters, threads, calendars, labels | | Deterministic seed; public | ✅ [ADR-0025](adr/0025-synthetic-gold-set.md). [`eval/synthetic`](../eval/synthetic) generates one fictional firm from a seed: 6 users, 8 clients, 24 matters (2 closed), 50 threads, 38 meetings, 220 activity events over 20 business days. Output is canonical JSON with a manifest of the seed, generator version, counts and per-file SHA-256. Events validate against `activity-event.schema.json` `1.0` and carry canonical ids, with the Python implementation pinned to the same golden value as `timelex-types`. Labels are separate from observations and state `expectedStorage`, `expectedOutcome`, client, matter, billability, evidence and honest candidate matters; 70 events are ambiguous across open matters, 12 are excluded-domain signals that capture must drop, and closed-matter signals expect review. Every event is metadata-only. `python -m timelex_goldset check --corpus corpus` regenerates in memory and fails on drift; CI runs ruff, 29 tests and the check on pinned CPython 3.12. Limits: no bodies, no assignment history, one firm and one window. The harness and red-team corpus remain P3-11 and P3-10 |
 | P3-02 | Consented real gold-set protocol (POPIA review, anonymisation, storage) | T0-L01 | Written protocol approved | ⬜ |
 | P3-03 | Segmentation to time blocks (deterministic, Rust) | P2-01 | Overlap/gap property tests | ⬜ |
 | P3-04 | `matters` minimal: clients, matters, aliases, rate cards, import | P1-02 | Import from CSV | ⬜ |

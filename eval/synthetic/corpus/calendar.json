@@ -1,0 +1,431 @@
+{
+  "meetings": [
+    {
+      "attendees": [
+        "admin@meridian.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-25T12:45:00Z",
+      "meetingId": "mtg_3cbdec4ddf3deac3",
+      "organizer": "t.dlamini@bergman-dlamini.example",
+      "startsAt": "2026-09-25T11:45:00Z",
+      "subject": "Draft for comment"
+    },
+    {
+      "attendees": [
+        "instructions@meridian.example",
+        "a.bergman@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-16T14:15:00Z",
+      "meetingId": "mtg_8178c9c57d983515",
+      "organizer": "a.bergman@bergman-dlamini.example",
+      "startsAt": "2026-09-16T13:30:00Z",
+      "subject": "[M-2026-0102] Commercial lease renewal"
+    },
+    {
+      "attendees": [
+        "legal@meridian.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-22T14:30:00Z",
+      "meetingId": "mtg_aee5b4fb5eeca530",
+      "organizer": "t.dlamini@bergman-dlamini.example",
+      "startsAt": "2026-09-22T13:30:00Z",
+      "subject": "Meridian Logistics: commercial lease renewal"
+    },
+    {
+      "attendees": [
+        "admin@meridian.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-30T14:30:00Z",
+      "meetingId": "mtg_5b25c4fc57914d57",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-30T14:00:00Z",
+      "subject": "[M-2026-0103] Mining right transfer"
+    },
+    {
+      "attendees": [
+        "legal@kalahari.example",
+        "a.bergman@bergman-dlamini.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-16T11:00:00Z",
+      "meetingId": "mtg_be3731227fb796a6",
+      "organizer": "legal@kalahari.example",
+      "startsAt": "2026-09-16T09:30:00Z",
+      "subject": "Kalahari Mining: employment contract review"
+    },
+    {
+      "attendees": [
+        "ops@kalahari.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-25T16:45:00Z",
+      "meetingId": "mtg_670d0c24028f5b0a",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-25T15:45:00Z",
+      "subject": "[M-2026-0105] Data protection audit"
+    },
+    {
+      "attendees": [
+        "legal@kalahari.example",
+        "l.vanwyk@bergman-dlamini.example",
+        "a.bergman@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-15T10:45:00Z",
+      "meetingId": "mtg_b6813d6ed52f8142",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-15T10:00:00Z",
+      "subject": "[M-2026-0106] Trademark opposition"
+    },
+    {
+      "attendees": [
+        "ops@capepoint.example",
+        "r.pillay@bergman-dlamini.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-21T10:30:00Z",
+      "meetingId": "mtg_e41a21a5e2176315",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-21T09:45:00Z",
+      "subject": "[M-2026-0107] Property transfer"
+    },
+    {
+      "attendees": [
+        "legal@capepoint.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-29T16:00:00Z",
+      "meetingId": "mtg_9c6a6585c0d24cc4",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-29T15:00:00Z",
+      "subject": "[M-2026-0108] Debt recovery"
+    },
+    {
+      "attendees": [
+        "ops@capepoint.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-10-02T09:30:00Z",
+      "meetingId": "mtg_67e1caedbf6ad793",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-10-02T09:00:00Z",
+      "subject": "[M-2026-0109] B-BBEE verification"
+    },
+    {
+      "attendees": [
+        "ops@highveld.example",
+        "s.mokoena@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-09T14:30:00Z",
+      "meetingId": "mtg_f01601b81a8b7d92",
+      "organizer": "s.mokoena@bergman-dlamini.example",
+      "startsAt": "2026-09-09T13:45:00Z",
+      "subject": "Meeting notes"
+    },
+    {
+      "attendees": [
+        "ops@highveld.example",
+        "l.vanwyk@bergman-dlamini.example",
+        "n.khumalo@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-23T14:45:00Z",
+      "meetingId": "mtg_08875daa38a9a654",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-23T13:15:00Z",
+      "subject": "Meeting notes"
+    },
+    {
+      "attendees": [
+        "finance@highveld.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-23T15:45:00Z",
+      "meetingId": "mtg_53a37a041966f7d1",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-23T14:45:00Z",
+      "subject": "[M-2026-0111] Construction dispute"
+    },
+    {
+      "attendees": [
+        "finance@highveld.example",
+        "a.bergman@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-08T12:00:00Z",
+      "meetingId": "mtg_b23f03c43dea2982",
+      "organizer": "a.bergman@bergman-dlamini.example",
+      "startsAt": "2026-09-08T10:30:00Z",
+      "subject": "Documents for review"
+    },
+    {
+      "attendees": [
+        "instructions@durbanmarine.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-18T15:15:00Z",
+      "meetingId": "mtg_aa293624159aa236",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-18T14:45:00Z",
+      "subject": "Meeting notes"
+    },
+    {
+      "attendees": [
+        "admin@durbanmarine.example",
+        "s.mokoena@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-11T12:30:00Z",
+      "meetingId": "mtg_b990ad22e3696c94",
+      "organizer": "s.mokoena@bergman-dlamini.example",
+      "startsAt": "2026-09-11T11:45:00Z",
+      "subject": "[M-2026-0114] Commercial lease renewal"
+    },
+    {
+      "attendees": [
+        "admin@durbanmarine.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-09T15:30:00Z",
+      "meetingId": "mtg_4c06d9f2023e7902",
+      "organizer": "t.dlamini@bergman-dlamini.example",
+      "startsAt": "2026-09-09T14:30:00Z",
+      "subject": "Durban Marine: commercial lease renewal"
+    },
+    {
+      "attendees": [
+        "legal@durbanmarine.example",
+        "n.khumalo@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-18T16:30:00Z",
+      "meetingId": "mtg_0ec41eb95ef49149",
+      "organizer": "n.khumalo@bergman-dlamini.example",
+      "startsAt": "2026-09-18T15:00:00Z",
+      "subject": "[M-2026-0115] Mining right transfer"
+    },
+    {
+      "attendees": [
+        "ops@durbanmarine.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-15T12:15:00Z",
+      "meetingId": "mtg_fbe2213335c45aaa",
+      "organizer": "ops@durbanmarine.example",
+      "startsAt": "2026-09-15T11:30:00Z",
+      "subject": "[M-2026-0115] Mining right transfer"
+    },
+    {
+      "attendees": [
+        "finance@karoo-agri.example",
+        "n.khumalo@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-25T13:45:00Z",
+      "meetingId": "mtg_dfbbb16dbbd51f3b",
+      "organizer": "n.khumalo@bergman-dlamini.example",
+      "startsAt": "2026-09-25T13:15:00Z",
+      "subject": "Karoo Agri: employment contract review"
+    },
+    {
+      "attendees": [
+        "ops@karoo-agri.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-21T13:45:00Z",
+      "meetingId": "mtg_b6f5f340da120af7",
+      "organizer": "ops@karoo-agri.example",
+      "startsAt": "2026-09-21T12:15:00Z",
+      "subject": "Karoo Agri: employment contract review"
+    },
+    {
+      "attendees": [
+        "admin@karoo-agri.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-07T12:30:00Z",
+      "meetingId": "mtg_b06548c7517fe7e5",
+      "organizer": "t.dlamini@bergman-dlamini.example",
+      "startsAt": "2026-09-07T11:45:00Z",
+      "subject": "Karoo Agri: data protection audit"
+    },
+    {
+      "attendees": [
+        "instructions@karoo-agri.example",
+        "n.khumalo@bergman-dlamini.example",
+        "s.mokoena@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-16T11:00:00Z",
+      "meetingId": "mtg_0aee6d434970c9d8",
+      "organizer": "n.khumalo@bergman-dlamini.example",
+      "startsAt": "2026-09-16T10:15:00Z",
+      "subject": "Meeting notes"
+    },
+    {
+      "attendees": [
+        "instructions@karoo-agri.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-15T11:45:00Z",
+      "meetingId": "mtg_7beaaffd0e0a76fb",
+      "organizer": "instructions@karoo-agri.example",
+      "startsAt": "2026-09-15T11:15:00Z",
+      "subject": "Karoo Agri: trademark opposition"
+    },
+    {
+      "attendees": [
+        "legal@karoo-agri.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-30T10:00:00Z",
+      "meetingId": "mtg_87b87609ef2e0e73",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-30T09:00:00Z",
+      "subject": "Next steps"
+    },
+    {
+      "attendees": [
+        "instructions@sandtonfintech.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-25T11:00:00Z",
+      "meetingId": "mtg_88724a48ec3a81b2",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-25T10:15:00Z",
+      "subject": "Sandton Fintech: property transfer"
+    },
+    {
+      "attendees": [
+        "legal@sandtonfintech.example",
+        "l.vanwyk@bergman-dlamini.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-22T14:00:00Z",
+      "meetingId": "mtg_f76ce35d95a21167",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-22T12:30:00Z",
+      "subject": "[M-2026-0120] Debt recovery"
+    },
+    {
+      "attendees": [
+        "finance@sandtonfintech.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-16T12:45:00Z",
+      "meetingId": "mtg_f7784677e6252dc4",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-16T11:15:00Z",
+      "subject": "[M-2026-0121] B-BBEE verification"
+    },
+    {
+      "attendees": [
+        "legal@pretoriahealth.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-22T10:00:00Z",
+      "meetingId": "mtg_a36710a22e582ea7",
+      "organizer": "r.pillay@bergman-dlamini.example",
+      "startsAt": "2026-09-22T09:00:00Z",
+      "subject": "Pretoria Health: supplier agreement"
+    },
+    {
+      "attendees": [
+        "ops@pretoriahealth.example",
+        "s.mokoena@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-07T14:00:00Z",
+      "meetingId": "mtg_2aff24262e466661",
+      "organizer": "s.mokoena@bergman-dlamini.example",
+      "startsAt": "2026-09-07T13:15:00Z",
+      "subject": "Pretoria Health: supplier agreement"
+    },
+    {
+      "attendees": [
+        "admin@pretoriahealth.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-21T14:15:00Z",
+      "meetingId": "mtg_53722ed3b7c44e0b",
+      "organizer": "admin@pretoriahealth.example",
+      "startsAt": "2026-09-21T13:30:00Z",
+      "subject": "Meeting notes"
+    },
+    {
+      "attendees": [
+        "instructions@pretoriahealth.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-17T13:15:00Z",
+      "meetingId": "mtg_53e6f44f7fd281db",
+      "organizer": "instructions@pretoriahealth.example",
+      "startsAt": "2026-09-17T11:45:00Z",
+      "subject": "Documents for review"
+    },
+    {
+      "attendees": [
+        "admin@pretoriahealth.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-07T12:00:00Z",
+      "meetingId": "mtg_aa26003176c1edd9",
+      "organizer": "l.vanwyk@bergman-dlamini.example",
+      "startsAt": "2026-09-07T10:30:00Z",
+      "subject": "Pretoria Health: loan facility review"
+    },
+    {
+      "attendees": [
+        "finance@pretoriahealth.example",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-22T14:15:00Z",
+      "meetingId": "mtg_817060988bee48bb",
+      "organizer": "finance@pretoriahealth.example",
+      "startsAt": "2026-09-22T13:30:00Z",
+      "subject": "Documents for review"
+    },
+    {
+      "attendees": [
+        "a.bergman@bergman-dlamini.example",
+        "t.dlamini@bergman-dlamini.example",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-30T12:00:00Z",
+      "meetingId": "mtg_ad99db8ac8c23899",
+      "organizer": "a.bergman@bergman-dlamini.example",
+      "startsAt": "2026-09-30T10:30:00Z",
+      "subject": "Fees and billing review"
+    },
+    {
+      "attendees": [
+        "a.bergman@bergman-dlamini.example",
+        "l.vanwyk@bergman-dlamini.example",
+        "t.dlamini@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-22T15:15:00Z",
+      "meetingId": "mtg_3caca7da74247f21",
+      "organizer": "a.bergman@bergman-dlamini.example",
+      "startsAt": "2026-09-22T14:15:00Z",
+      "subject": "Office move update"
+    },
+    {
+      "attendees": [
+        "instructions@adverse.example.test",
+        "l.vanwyk@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-30T15:45:00Z",
+      "meetingId": "mtg_737d80483960f2fc",
+      "organizer": "instructions@adverse.example.test",
+      "startsAt": "2026-09-30T15:00:00Z",
+      "subject": "Settlement proposal"
+    },
+    {
+      "attendees": [
+        "ops@personal.example.test",
+        "r.pillay@bergman-dlamini.example"
+      ],
+      "endsAt": "2026-09-28T15:30:00Z",
+      "meetingId": "mtg_707e647f5d03f614",
+      "organizer": "ops@personal.example.test",
+      "startsAt": "2026-09-28T14:45:00Z",
+      "subject": "Weekend arrangements"
+    }
+  ],
+  "schema": "timelex.gold-set.calendar.v1"
+}

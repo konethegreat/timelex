@@ -1,0 +1,1577 @@
+{
+  "schema": "timelex.gold-set.threads.v1",
+  "threads": [
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@meridian.example",
+          "messageId": "msg_79146c9ad5c49ed0",
+          "sentAt": "2026-09-14T11:49:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_d0a5544913a049a8",
+          "sentAt": "2026-09-14T14:33:00Z",
+          "to": [
+            "admin@meridian.example"
+          ]
+        }
+      ],
+      "subject": "Meridian Logistics: shareholder agreement review",
+      "threadRef": "th_6b307db74a4bc809"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "legal@meridian.example",
+          "messageId": "msg_da807c279196f711",
+          "sentAt": "2026-09-29T09:33:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_b030e567c86687ae",
+          "sentAt": "2026-09-29T16:00:00Z",
+          "to": [
+            "legal@meridian.example"
+          ]
+        }
+      ],
+      "subject": "Next steps",
+      "threadRef": "th_356ed923a4378bff"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@meridian.example",
+          "messageId": "msg_76bc3bd0ff692110",
+          "sentAt": "2026-09-10T09:18:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_62b7a630debda925",
+          "sentAt": "2026-09-10T10:59:00Z",
+          "to": [
+            "instructions@meridian.example"
+          ]
+        },
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "instructions@meridian.example",
+          "messageId": "msg_914317492aa624a6",
+          "sentAt": "2026-09-10T16:27:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Next steps",
+      "threadRef": "th_41ff24ca19920fe2"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "ops@meridian.example",
+          "messageId": "msg_0d8cf37927770e4f",
+          "sentAt": "2026-09-23T12:16:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "t.dlamini@bergman-dlamini.example"
+          ],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_ab5c8712f88f8d92",
+          "sentAt": "2026-09-23T14:57:00Z",
+          "to": [
+            "ops@meridian.example"
+          ]
+        }
+      ],
+      "subject": "Meridian Logistics: mining right transfer",
+      "threadRef": "th_e8411a17d9cf6890"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "legal@meridian.example",
+          "messageId": "msg_ecb7913e643bb588",
+          "sentAt": "2026-09-29T09:38:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_916e5fbdbae69440",
+          "sentAt": "2026-09-29T10:53:00Z",
+          "to": [
+            "legal@meridian.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "legal@meridian.example",
+          "messageId": "msg_469368afdf062258",
+          "sentAt": "2026-09-29T11:11:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0103] Mining right transfer",
+      "threadRef": "th_2aa0747384e8c6fe"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_8db3abf91bee2536",
+          "sentAt": "2026-10-02T08:46:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_bc29debf6218a4f3",
+          "sentAt": "2026-10-02T14:52:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_f16f512bf025af5c",
+          "sentAt": "2026-10-02T15:29:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_eaed5f9207ae8752",
+          "sentAt": "2026-10-02T16:31:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "Meeting notes",
+      "threadRef": "th_8daf6b2f801079cc"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "t.dlamini@bergman-dlamini.example"
+          ],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_727a3bca2a59efa3",
+          "sentAt": "2026-09-23T11:01:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_a0eac168deaa60d5",
+          "sentAt": "2026-09-23T14:44:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0104] Employment contract review",
+      "threadRef": "th_872130e8ee913a15"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "ops@kalahari.example",
+          "messageId": "msg_5153e080ab7898d6",
+          "sentAt": "2026-09-23T09:43:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_51483d877ef152d3",
+          "sentAt": "2026-09-23T12:44:00Z",
+          "to": [
+            "ops@kalahari.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@kalahari.example",
+          "messageId": "msg_8da2145a13c63177",
+          "sentAt": "2026-09-23T13:31:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_d78df3d917276bdd",
+          "sentAt": "2026-09-23T14:32:00Z",
+          "to": [
+            "ops@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "Draft for comment",
+      "threadRef": "th_7740edf1502c319b"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_e47c0000980b1ae8",
+          "sentAt": "2026-09-15T08:28:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "t.dlamini@bergman-dlamini.example",
+          "messageId": "msg_9cc46efb655b735b",
+          "sentAt": "2026-09-15T13:03:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "Following up",
+      "threadRef": "th_e8219c261a419a92"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@kalahari.example",
+          "messageId": "msg_8dd73eaf3d6aa9a5",
+          "sentAt": "2026-09-18T10:34:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "t.dlamini@bergman-dlamini.example",
+          "messageId": "msg_96f29bc9eb7b68c8",
+          "sentAt": "2026-09-18T13:23:00Z",
+          "to": [
+            "instructions@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0106] Trademark opposition",
+      "threadRef": "th_6a4b5270134d8719"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_6e6db8c2f988fa28",
+          "sentAt": "2026-09-23T09:18:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_5db843b8c81f26fc",
+          "sentAt": "2026-09-23T09:45:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        },
+        {
+          "cc": [
+            "a.bergman@bergman-dlamini.example"
+          ],
+          "from": "admin@kalahari.example",
+          "messageId": "msg_92ab29b56ff8d54b",
+          "sentAt": "2026-09-23T11:27:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "a.bergman@bergman-dlamini.example"
+          ],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_628f17210274a87a",
+          "sentAt": "2026-09-23T14:58:00Z",
+          "to": [
+            "admin@kalahari.example"
+          ]
+        }
+      ],
+      "subject": "Meeting notes",
+      "threadRef": "th_53376ffccb50f2e8"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@capepoint.example",
+          "messageId": "msg_9b01d9ebfbae95c0",
+          "sentAt": "2026-09-23T11:40:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_daaefe667024f5fb",
+          "sentAt": "2026-09-23T12:45:00Z",
+          "to": [
+            "ops@capepoint.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@capepoint.example",
+          "messageId": "msg_4741ea38af783842",
+          "sentAt": "2026-09-23T16:12:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Next steps",
+      "threadRef": "th_c4901c5520b7906e"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "finance@capepoint.example",
+          "messageId": "msg_27ed1394d9c2f409",
+          "sentAt": "2026-09-15T11:00:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_022ff155f0802136",
+          "sentAt": "2026-09-15T11:28:00Z",
+          "to": [
+            "finance@capepoint.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "finance@capepoint.example",
+          "messageId": "msg_7a0bd17df51e5a03",
+          "sentAt": "2026-09-15T13:56:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_8ac5abcc4641b3ab",
+          "sentAt": "2026-09-15T15:43:00Z",
+          "to": [
+            "finance@capepoint.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0108] Debt recovery",
+      "threadRef": "th_6d688f0bd05ce6fd"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@capepoint.example",
+          "messageId": "msg_13143487d0d3bbad",
+          "sentAt": "2026-09-10T09:25:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "t.dlamini@bergman-dlamini.example"
+          ],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_dcd8ea419de99677",
+          "sentAt": "2026-09-10T09:45:00Z",
+          "to": [
+            "admin@capepoint.example"
+          ]
+        }
+      ],
+      "subject": "Following up",
+      "threadRef": "th_1d805fd8ec43c132"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "ops@highveld.example",
+          "messageId": "msg_835f2f82e85f8625",
+          "sentAt": "2026-09-24T08:05:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_1fd5cc9639dcd48c",
+          "sentAt": "2026-09-24T15:48:00Z",
+          "to": [
+            "ops@highveld.example"
+          ]
+        }
+      ],
+      "subject": "Draft for comment",
+      "threadRef": "th_7699530f020c816f"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "instructions@highveld.example",
+          "messageId": "msg_0bb0ccfb188fb1a6",
+          "sentAt": "2026-09-15T10:14:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_48e4bacc53f8db1d",
+          "sentAt": "2026-09-15T11:24:00Z",
+          "to": [
+            "instructions@highveld.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "instructions@highveld.example",
+          "messageId": "msg_0694344d6de5aec4",
+          "sentAt": "2026-09-15T14:35:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "a.bergman@bergman-dlamini.example"
+          ],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_be2d69020cde3767",
+          "sentAt": "2026-09-15T16:26:00Z",
+          "to": [
+            "instructions@highveld.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0110] Supplier agreement",
+      "threadRef": "th_adb65a3f80290731"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "ops@highveld.example",
+          "messageId": "msg_5fba8b9053032725",
+          "sentAt": "2026-09-09T14:23:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_27c83775b2c8df97",
+          "sentAt": "2026-09-09T15:53:00Z",
+          "to": [
+            "ops@highveld.example"
+          ]
+        },
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "ops@highveld.example",
+          "messageId": "msg_f34f3846112a4e6a",
+          "sentAt": "2026-09-09T16:31:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_e61a0d5708b53965",
+          "sentAt": "2026-09-09T16:49:00Z",
+          "to": [
+            "ops@highveld.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0111] Construction dispute",
+      "threadRef": "th_24b0bc58f8c4d71c"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@highveld.example",
+          "messageId": "msg_dc0a334a16981b86",
+          "sentAt": "2026-09-18T08:42:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_81b2d1bc0a931b10",
+          "sentAt": "2026-09-18T10:07:00Z",
+          "to": [
+            "ops@highveld.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@highveld.example",
+          "messageId": "msg_729801a0fa04a2e7",
+          "sentAt": "2026-09-18T10:20:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_128246c6d034d781",
+          "sentAt": "2026-09-18T11:05:00Z",
+          "to": [
+            "ops@highveld.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0111] Construction dispute",
+      "threadRef": "th_5a2a3a6518106138"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@highveld.example",
+          "messageId": "msg_72c549c137a013a5",
+          "sentAt": "2026-09-21T09:25:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_7ff3ff69f053e199",
+          "sentAt": "2026-09-21T10:11:00Z",
+          "to": [
+            "instructions@highveld.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "instructions@highveld.example",
+          "messageId": "msg_56584e1037d0702f",
+          "sentAt": "2026-09-21T15:10:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0112] Loan facility review",
+      "threadRef": "th_9548c9cb5fd1557c"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@highveld.example",
+          "messageId": "msg_d1266796844cf4fe",
+          "sentAt": "2026-09-17T14:09:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_cb1bfd098c07f997",
+          "sentAt": "2026-09-17T16:27:00Z",
+          "to": [
+            "instructions@highveld.example"
+          ]
+        }
+      ],
+      "subject": "Following up",
+      "threadRef": "th_3955f370d1630356"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_bd5bb28c628e5b17",
+          "sentAt": "2026-09-28T10:52:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "t.dlamini@bergman-dlamini.example"
+          ],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_48a1c45aebb851bb",
+          "sentAt": "2026-09-28T11:33:00Z",
+          "to": [
+            "ops@durbanmarine.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_7161fff5bf6fbba6",
+          "sentAt": "2026-09-28T13:15:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0113] Shareholder agreement review",
+      "threadRef": "th_ed3e77e96762b56a"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_a9b75e1c28f35d36",
+          "sentAt": "2026-09-11T08:28:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "t.dlamini@bergman-dlamini.example",
+          "messageId": "msg_c3dc32d05337a5c0",
+          "sentAt": "2026-09-11T12:59:00Z",
+          "to": [
+            "ops@durbanmarine.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_4a4b13df68345d25",
+          "sentAt": "2026-09-11T15:07:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0113] Shareholder agreement review",
+      "threadRef": "th_2c306548dbb2f7c6"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@durbanmarine.example",
+          "messageId": "msg_80bc7d70f6ac5a36",
+          "sentAt": "2026-10-01T12:01:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_5a81d62693ac99e3",
+          "sentAt": "2026-10-01T14:27:00Z",
+          "to": [
+            "admin@durbanmarine.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0114] Commercial lease renewal",
+      "threadRef": "th_624e798b61051de6"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "admin@durbanmarine.example",
+          "messageId": "msg_e39b349478616375",
+          "sentAt": "2026-10-02T09:05:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "a.bergman@bergman-dlamini.example"
+          ],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_2f17e718b5c31902",
+          "sentAt": "2026-10-02T13:55:00Z",
+          "to": [
+            "admin@durbanmarine.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "admin@durbanmarine.example",
+          "messageId": "msg_2ca84cdea9873c26",
+          "sentAt": "2026-10-02T14:37:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0115] Mining right transfer",
+      "threadRef": "th_7e652dafa9dfc3bc"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "r.pillay@bergman-dlamini.example"
+          ],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_58f457333c3ff04b",
+          "sentAt": "2026-09-11T08:34:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_25875d585047042a",
+          "sentAt": "2026-09-11T10:42:00Z",
+          "to": [
+            "ops@durbanmarine.example"
+          ]
+        },
+        {
+          "cc": [
+            "r.pillay@bergman-dlamini.example"
+          ],
+          "from": "ops@durbanmarine.example",
+          "messageId": "msg_543c22858cef99e4",
+          "sentAt": "2026-09-11T14:36:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_9291bc1795aa7518",
+          "sentAt": "2026-09-11T15:30:00Z",
+          "to": [
+            "ops@durbanmarine.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0115] Mining right transfer",
+      "threadRef": "th_f7eaba92af1d87f9"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "legal@karoo-agri.example",
+          "messageId": "msg_492104fdce8c57c6",
+          "sentAt": "2026-09-24T10:34:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_accc4572e27e980e",
+          "sentAt": "2026-09-24T12:25:00Z",
+          "to": [
+            "legal@karoo-agri.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "legal@karoo-agri.example",
+          "messageId": "msg_2a5e7a4ebd0818a0",
+          "sentAt": "2026-09-24T13:23:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Next steps",
+      "threadRef": "th_23368fb3287314b0"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@karoo-agri.example",
+          "messageId": "msg_996172dab33ffbfe",
+          "sentAt": "2026-09-28T09:30:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_9083b0f4898b59b0",
+          "sentAt": "2026-09-28T15:50:00Z",
+          "to": [
+            "instructions@karoo-agri.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0116] Employment contract review",
+      "threadRef": "th_f92a7383095519fa"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "r.pillay@bergman-dlamini.example"
+          ],
+          "from": "legal@karoo-agri.example",
+          "messageId": "msg_2a08f57c526a25a6",
+          "sentAt": "2026-09-18T09:10:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_c151b9dd6be6e2f6",
+          "sentAt": "2026-09-18T11:09:00Z",
+          "to": [
+            "legal@karoo-agri.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "legal@karoo-agri.example",
+          "messageId": "msg_236821b8cb965510",
+          "sentAt": "2026-09-18T15:18:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0117] Data protection audit",
+      "threadRef": "th_2e5bcd2ea05a22f2"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@karoo-agri.example",
+          "messageId": "msg_ad5ec9472a7a79a6",
+          "sentAt": "2026-09-24T10:55:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "t.dlamini@bergman-dlamini.example"
+          ],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_e157d27a6f557d50",
+          "sentAt": "2026-09-24T14:27:00Z",
+          "to": [
+            "admin@karoo-agri.example"
+          ]
+        }
+      ],
+      "subject": "Draft for comment",
+      "threadRef": "th_9238a0908edad946"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@karoo-agri.example",
+          "messageId": "msg_bbba0c79bc0dc65a",
+          "sentAt": "2026-09-09T09:08:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_b39c002d05e812b7",
+          "sentAt": "2026-09-09T12:39:00Z",
+          "to": [
+            "ops@karoo-agri.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0118] Trademark opposition",
+      "threadRef": "th_1f1fdb80e2f3b671"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "r.pillay@bergman-dlamini.example"
+          ],
+          "from": "finance@karoo-agri.example",
+          "messageId": "msg_4e88b345e7dcd99c",
+          "sentAt": "2026-09-25T08:41:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_7ab4aef107ae599c",
+          "sentAt": "2026-09-25T14:48:00Z",
+          "to": [
+            "finance@karoo-agri.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "finance@karoo-agri.example",
+          "messageId": "msg_b9431317707cc3b8",
+          "sentAt": "2026-09-25T15:06:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0118] Trademark opposition",
+      "threadRef": "th_6682d67992775ba9"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "legal@sandtonfintech.example",
+          "messageId": "msg_2974f9c5d7b66b1c",
+          "sentAt": "2026-09-14T14:00:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_fe30a21ceb2c00d0",
+          "sentAt": "2026-09-14T15:12:00Z",
+          "to": [
+            "legal@sandtonfintech.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0119] Property transfer",
+      "threadRef": "th_5be100510dfdf10f"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@sandtonfintech.example",
+          "messageId": "msg_ae01bd8e0e0b5c47",
+          "sentAt": "2026-09-11T10:49:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_91a6bdb8d2f08629",
+          "sentAt": "2026-09-11T13:41:00Z",
+          "to": [
+            "admin@sandtonfintech.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "admin@sandtonfintech.example",
+          "messageId": "msg_f20428a7df2065c1",
+          "sentAt": "2026-09-11T14:00:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_c9711ff2f08775c9",
+          "sentAt": "2026-09-11T16:16:00Z",
+          "to": [
+            "admin@sandtonfintech.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0120] Debt recovery",
+      "threadRef": "th_e6c94b7117c20193"
+    },
+    {
+      "messages": [
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "legal@sandtonfintech.example",
+          "messageId": "msg_be800d78070ae6e9",
+          "sentAt": "2026-09-16T10:37:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_be663d1ef16960ce",
+          "sentAt": "2026-09-16T11:31:00Z",
+          "to": [
+            "legal@sandtonfintech.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "legal@sandtonfintech.example",
+          "messageId": "msg_43fa3c48f6e43de1",
+          "sentAt": "2026-09-16T14:50:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0121] B-BBEE verification",
+      "threadRef": "th_71b3e3f0f9075f04"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@sandtonfintech.example",
+          "messageId": "msg_af760178cbb1f69d",
+          "sentAt": "2026-09-24T08:13:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_1acb6370d18ed534",
+          "sentAt": "2026-09-24T09:47:00Z",
+          "to": [
+            "ops@sandtonfintech.example"
+          ]
+        },
+        {
+          "cc": [
+            "r.pillay@bergman-dlamini.example"
+          ],
+          "from": "ops@sandtonfintech.example",
+          "messageId": "msg_1be4437ff4c90b2d",
+          "sentAt": "2026-09-24T16:30:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Sandton Fintech: b-bbee verification",
+      "threadRef": "th_ce0a26f11d45db86"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@pretoriahealth.example",
+          "messageId": "msg_063dbf45584b5755",
+          "sentAt": "2026-09-16T09:02:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "l.vanwyk@bergman-dlamini.example"
+          ],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_7bd1334a743c24c7",
+          "sentAt": "2026-09-16T13:45:00Z",
+          "to": [
+            "ops@pretoriahealth.example"
+          ]
+        },
+        {
+          "cc": [
+            "s.mokoena@bergman-dlamini.example"
+          ],
+          "from": "ops@pretoriahealth.example",
+          "messageId": "msg_a5c0e860d6aeaa73",
+          "sentAt": "2026-09-16T14:09:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0122] Supplier agreement",
+      "threadRef": "th_a7a22b0c2a2b9f23"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@pretoriahealth.example",
+          "messageId": "msg_3700f1a82044147c",
+          "sentAt": "2026-10-01T10:40:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_f7bd560d4dd96f4a",
+          "sentAt": "2026-10-01T12:12:00Z",
+          "to": [
+            "ops@pretoriahealth.example"
+          ]
+        }
+      ],
+      "subject": "Documents for review",
+      "threadRef": "th_d405d07bb61bf58c"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "finance@pretoriahealth.example",
+          "messageId": "msg_84ec926b181b71a6",
+          "sentAt": "2026-09-16T11:48:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [
+            "n.khumalo@bergman-dlamini.example"
+          ],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_394b42425500cdd3",
+          "sentAt": "2026-09-16T13:21:00Z",
+          "to": [
+            "finance@pretoriahealth.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "finance@pretoriahealth.example",
+          "messageId": "msg_1fc95d6a74738ce2",
+          "sentAt": "2026-09-16T14:04:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_6175bfb772da05de",
+          "sentAt": "2026-09-16T14:55:00Z",
+          "to": [
+            "finance@pretoriahealth.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0123] Construction dispute",
+      "threadRef": "th_c94521c1f6513ea5"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "admin@pretoriahealth.example",
+          "messageId": "msg_e14671145ad4dc00",
+          "sentAt": "2026-09-22T10:56:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_a07809bfb7f8e1d6",
+          "sentAt": "2026-09-22T15:50:00Z",
+          "to": [
+            "admin@pretoriahealth.example"
+          ]
+        }
+      ],
+      "subject": "[M-2026-0124] Loan facility review",
+      "threadRef": "th_438b03241bc10e37"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_bdce4ac0400a2164",
+          "sentAt": "2026-09-10T11:08:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "t.dlamini@bergman-dlamini.example",
+          "messageId": "msg_2c608a946eab221d",
+          "sentAt": "2026-09-10T12:35:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_73790e49b58e7116",
+          "sentAt": "2026-09-10T16:44:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Fees and billing review",
+      "threadRef": "th_3fa33c8318bf264c"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_892fb813e4bcc8d3",
+          "sentAt": "2026-09-07T11:47:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_6de24b3dd932ee31",
+          "sentAt": "2026-09-07T16:26:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Weekly practice meeting",
+      "threadRef": "th_8745c57cd8ee70d2"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_0c751ba9c6221719",
+          "sentAt": "2026-09-22T11:07:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "l.vanwyk@bergman-dlamini.example",
+          "messageId": "msg_d589cd97c98ba0dd",
+          "sentAt": "2026-09-22T12:42:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_ecb34a8fab0033bc",
+          "sentAt": "2026-09-22T14:28:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Office move update",
+      "threadRef": "th_17a76a68229217ea"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "t.dlamini@bergman-dlamini.example",
+          "messageId": "msg_bfe84a9346411a2f",
+          "sentAt": "2026-09-09T08:18:00Z",
+          "to": [
+            "a.bergman@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "a.bergman@bergman-dlamini.example",
+          "messageId": "msg_260e1bd9d8628ffb",
+          "sentAt": "2026-09-09T10:40:00Z",
+          "to": [
+            "t.dlamini@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "New matter intake",
+      "threadRef": "th_35777028ff0e845e"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "ops@adverse.example.test",
+          "messageId": "msg_9f53b20919c4dda6",
+          "sentAt": "2026-09-21T10:20:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_6d4e65cd5b47e6ec",
+          "sentAt": "2026-09-21T11:09:00Z",
+          "to": [
+            "ops@adverse.example.test"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "ops@adverse.example.test",
+          "messageId": "msg_e6e37da40e571a45",
+          "sentAt": "2026-09-21T11:49:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Personal note",
+      "threadRef": "th_fb01ba8ab53a764f"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "instructions@adverse.example.test",
+          "messageId": "msg_a473ce10b636c7a2",
+          "sentAt": "2026-09-16T09:19:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "n.khumalo@bergman-dlamini.example",
+          "messageId": "msg_48044b4c79a93ed6",
+          "sentAt": "2026-09-16T10:02:00Z",
+          "to": [
+            "instructions@adverse.example.test"
+          ]
+        }
+      ],
+      "subject": "Personal note",
+      "threadRef": "th_13c6f38713205c98"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "finance@personal.example.test",
+          "messageId": "msg_01d17923518fc87d",
+          "sentAt": "2026-09-08T13:05:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "s.mokoena@bergman-dlamini.example",
+          "messageId": "msg_4eeed6d64e5dd852",
+          "sentAt": "2026-09-08T14:21:00Z",
+          "to": [
+            "finance@personal.example.test"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "finance@personal.example.test",
+          "messageId": "msg_a585e5c434451e50",
+          "sentAt": "2026-09-08T16:41:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Settlement proposal",
+      "threadRef": "th_39f07252e5124df4"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "finance@personal.example.test",
+          "messageId": "msg_ac73a8716a43c640",
+          "sentAt": "2026-09-29T12:24:00Z",
+          "to": [
+            "r.pillay@bergman-dlamini.example"
+          ]
+        },
+        {
+          "cc": [],
+          "from": "r.pillay@bergman-dlamini.example",
+          "messageId": "msg_5057e73c08f78902",
+          "sentAt": "2026-09-29T15:51:00Z",
+          "to": [
+            "finance@personal.example.test"
+          ]
+        }
+      ],
+      "subject": "Settlement proposal",
+      "threadRef": "th_e66322781dbefe1e"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "news@briefing.example",
+          "messageId": "msg_2004e1d2b345793b",
+          "sentAt": "2026-09-11T13:27:00Z",
+          "to": [
+            "n.khumalo@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Regulatory briefing",
+      "threadRef": "th_2586df1d81f4794a"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "news@briefing.example",
+          "messageId": "msg_68c38e9020b93ca5",
+          "sentAt": "2026-09-08T08:12:00Z",
+          "to": [
+            "l.vanwyk@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Regulatory briefing",
+      "threadRef": "th_9335a60d601e87ab"
+    },
+    {
+      "messages": [
+        {
+          "cc": [],
+          "from": "news@briefing.example",
+          "messageId": "msg_ed32072ef25c8319",
+          "sentAt": "2026-09-21T10:13:00Z",
+          "to": [
+            "s.mokoena@bergman-dlamini.example"
+          ]
+        }
+      ],
+      "subject": "Regulatory briefing",
+      "threadRef": "th_1ad05c3b01357483"
+    }
+  ]
+}

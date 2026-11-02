@@ -74,7 +74,7 @@ workers/      Python workers (redaction now; OCR/ML later). No business rules.
 packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)
 tools/        sdk-gen (contract → SDK types), new-service (generate a service with auth, tenancy, health and CI)
 plugin/       Claude plugin manifest
-eval/         Evaluation harness and gold-set spec (accuracy is measured, not asserted)
+eval/         Deterministic synthetic gold set (P3-01); evaluation harness next (P3-11)
 deploy/       Docker Compose dev stack: Postgres, S3-compatible storage, gateway, identity, vault (Phase 1 ✅)
 docs/         Research, architecture, ADRs, phases, tasks, worklog
 ```

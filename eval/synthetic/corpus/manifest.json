@@ -1,0 +1,45 @@
+{
+  "counts": {
+    "ambiguousEvents": 70,
+    "clients": 8,
+    "events": 220,
+    "excludedEvents": 12,
+    "matters": 24,
+    "meetings": 38,
+    "messages": 134,
+    "reviewEvents": 82,
+    "threads": 50,
+    "users": 6
+  },
+  "files": [
+    {
+      "bytes": 13812,
+      "name": "calendar.json",
+      "sha256": "ce3f25b746d581eaebba659d5ca66e3bdca4d75274ad9c5616154d743351bb5f"
+    },
+    {
+      "bytes": 213451,
+      "name": "events.json",
+      "sha256": "168e01dcae6b97f82136b6cd5dd153ad701bf2dc4981545a6a3abb24388af8ba"
+    },
+    {
+      "bytes": 9220,
+      "name": "firm.json",
+      "sha256": "7af626083c10798f49094ba9f6f1ad2b7dc4ade06774241cd03ef70e56777b8c"
+    },
+    {
+      "bytes": 83854,
+      "name": "labels.json",
+      "sha256": "35aeae37308e51a2602811d51b85f5a9b0b3bfbba4e8277fba628bf9cbef7815"
+    },
+    {
+      "bytes": 42891,
+      "name": "threads.json",
+      "sha256": "1ca4f45fcd15d5fcf068e4f7dd410e8ebc304975215f8c614b234f7c3d4ecd4b"
+    }
+  ],
+  "generatorVersion": "1.0.0",
+  "schema": "timelex.gold-set.manifest.v1",
+  "seed": 20261102,
+  "tenantId": "tn_gb911f19670423736"
+}
