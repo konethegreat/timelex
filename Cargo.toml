@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/timelex-units", "crates/timelex-types", "crates/timelex-identity", "crates/timelex-vault", "crates/timelex-audit", "crates/timelex-db", "crates/timelex-auth", "crates/timelex-outbox", "crates/timelex-mcp", "crates/timelex-telemetry", "services/gateway", "services/identity", "services/vault", "services/capture-hub", "services/mcp-host", "tools/new-service"]
+members = ["crates/timelex-units", "crates/timelex-types", "crates/timelex-segmentation", "crates/timelex-identity", "crates/timelex-vault", "crates/timelex-audit", "crates/timelex-db", "crates/timelex-auth", "crates/timelex-outbox", "crates/timelex-mcp", "crates/timelex-telemetry", "services/gateway", "services/identity", "services/vault", "services/capture-hub", "services/mcp-host", "tools/new-service"]
 
 [workspace.package]
 version = "0.1.0"

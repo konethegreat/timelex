@@ -4,7 +4,53 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-02 (latest): P3-01 — a measured pipeline needs a corpus before it needs a model
+## 2026-11-02 (latest): P3-03 — segmentation keeps the time arithmetic deterministic
+
+**Trigger:** The gold set now exists, but attribution's first stage did not: a day of mail, meetings
+and document work is still a list of overlapping signals, not a set of intervals that can be reviewed
+or billed. Segmentation decides how much time the rest of the pipeline is arguing about, so it cannot
+be a prompt and it cannot vary between runs.
+
+**Done**
+- [`crates/timelex-segmentation`](../crates/timelex-segmentation) is a pure library over
+  `ActivityEvent`: no I/O, no clock, no model, no floats. It refuses mixed tenants and mixed actors,
+  treats intervals as whole-second half-open ranges (start down, end up), and drops point events.
+- Grouping has one priority: `threadRef`, then `documentRef`, then the sorted lower-cased participant
+  domains, then the event's own id. A group joins across gaps of at most five minutes (inclusive).
+  Meetings, calls and manual entries are anchors and are placed before mail, document and desktop
+  work; every later group is clipped against the claimed union.
+- The invariants are explicit: blocks never share a second, block durations sum to the union of the
+  input intervals, and each block cites the events that intersect it. An anchor fully covering a
+  passive group leaves no passive block; a call inside a document block splits it in two.
+- Determinism is structural: `BTreeMap` groups, `(class, first start, group key)` order, and a total
+  order on blocks. Reversing and shuffling the input yields the identical vector.
+- [ADR-0026](adr/0026-deterministic-segmentation.md) records the rules, the clipping choice and its
+  consequences. TASKS, ARCHITECTURE and INDEX are updated. The gold set has its first Rust consumer:
+  two tests read `eval/synthetic/corpus/events.json` and segment all 220 events per actor.
+
+**Verification**
+- 30 tests pass: 4 interval unit tests and 26 integration tests, including gap boundaries, same-class
+  and anchor/passive overlap, full cover, mixed tenant/actor refusal, end-before-start, sub-second
+  outward rounding, a 200-event generated set whose every claimed second is inserted into a set (a
+  duplicate fails), union equality, and input-order independence over 50 shuffles.
+- The corpus test asserts a stronger per-event property: every input interval is covered by the
+  output blocks. It caught a real case the first version of the assertion missed: a document view at
+  10:44 on 22 September sits wholly inside a different document's edit block, so it is covered rather
+  than cited as evidence. That is the intended equal-class rule, now stated in the ADR.
+- `cargo fmt --all -- --check`, `cargo clippy -p timelex-segmentation --all-targets -- -D warnings`
+  and `cargo test -p timelex-segmentation` are clean; the docs link check passes.
+
+**Decisions**
+- Clipping rather than allowing overlap: an overlapping block would let two entries bill one set of
+  minutes. The losing events stay in the ledger, so a later overlap report can show them.
+- Class-level precedence rather than per-kind precedence: passive work on the same thread should not
+  split merely because one event is a view and another an edit.
+- No rounding in segmentation: six-minute units belong to `timelex-units` and a firm's fee agreement.
+
+**Next:** P3-04 minimal matters (clients, matters, aliases, rate cards, CSV import) is the next
+unblocked task, then P3-05 can run the hard-key and history stages over this corpus and these blocks.
+
+## 2026-11-02: P3-01 — a measured pipeline needs a corpus before it needs a model
 
 **Trigger:** Gate A is a measured claim, and the consented real corpus cannot be the first source: it
 waits on the P3-02 POPIA protocol, is private and cannot enter CI. The synthetic gold set is the long
