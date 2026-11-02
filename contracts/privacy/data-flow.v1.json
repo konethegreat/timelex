@@ -1,0 +1,174 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-11-02",
+  "scope": "TimeLex pre-alpha build",
+  "disclaimer": "Technical record of this build's data flows for a firm's POPIA documentation. It is not legal advice and does not replace the firm's own records or its counsel's review.",
+  "captureDefaults": {
+    "contentCaptured": false,
+    "redactionRequiredBeforeContent": true,
+    "manualEntriesStoreTitleOnly": true,
+    "domainExclusionsEnforcedBeforeStorage": true
+  },
+  "dataCategories": [
+    {
+      "id": "account-identity",
+      "description": "Firm name and slug, user names and email addresses, roles, and API-key name, prefix and SHA-256 hash. The API key itself is never stored.",
+      "containsPersonalData": true,
+      "storage": "identity schema (tenants, users, user_roles, api_keys)",
+      "retention": "Until the firm or user is deleted through an operator process; there is no self-service deletion yet."
+    },
+    {
+      "id": "activity-metadata",
+      "description": "Activity events: source system and source id, actor, kind, start and end times, capture time, subject title, participant domains and addresses, and privacy flags.",
+      "containsPersonalData": true,
+      "storage": "capture.activity_events",
+      "retention": "Immutable; no automatic deletion is configured in this build."
+    },
+    {
+      "id": "manual-entry",
+      "description": "Hand-recorded calls, meetings and notes. Only the title the person typed is kept; no note body or transcript.",
+      "containsPersonalData": true,
+      "storage": "capture.activity_events (source manual)",
+      "retention": "Immutable; no automatic deletion is configured in this build."
+    },
+    {
+      "id": "privacy-exclusions",
+      "description": "Excluded domains, client or matter identifiers, an optional reason, and the creator and creation time.",
+      "containsPersonalData": true,
+      "storage": "capture.exclusions",
+      "retention": "Until an administrator removes the exclusion."
+    },
+    {
+      "id": "connector-state",
+      "description": "An opaque cursor per connector and firm, so a connector resumes where it stopped.",
+      "containsPersonalData": false,
+      "storage": "capture.connector_cursors",
+      "retention": "Until the connector is removed."
+    },
+    {
+      "id": "provider-secrets",
+      "description": "Sealed provider credentials (AES-256-GCM ciphertext and a wrapped data key), the label, the last four characters, allowed hosts and audit metadata. Values are never shown after they are stored.",
+      "containsPersonalData": false,
+      "storage": "vault.secrets, vault.secret_audit, vault.chain_heads",
+      "retention": "Until revoked; revoking destroys the ciphertext and keeps metadata only."
+    },
+    {
+      "id": "audit-and-events",
+      "description": "Hash-chained audit entries for secret actions, and outbox envelopes such as activity.recorded. No credential or content value is included.",
+      "containsPersonalData": true,
+      "storage": "vault.secret_audit, platform.outbox",
+      "retention": "Append-only; no deletion is granted to the services."
+    },
+    {
+      "id": "content",
+      "description": "Captured message bodies, documents or transcripts, referenced by contentRef. Off by default: content is accepted only after redaction.",
+      "containsPersonalData": true,
+      "storage": "No content store is wired in this build.",
+      "retention": "Not applicable until content capture is enabled."
+    }
+  ],
+  "flows": [
+    {
+      "id": "manual-capture",
+      "from": "Person in a browser (quick-capture page)",
+      "to": "Gateway, then capture-hub",
+      "data": "Manual entry: kind, start and end times, title; the API key in the Authorization header",
+      "storage": "capture.activity_events, then platform.outbox",
+      "status": "active"
+    },
+    {
+      "id": "api-ingest",
+      "from": "A connector or service holding a tenant API key",
+      "to": "Gateway, then capture-hub",
+      "data": "Activity event metadata and its canonical id",
+      "storage": "capture.activity_events, then platform.outbox",
+      "status": "active"
+    },
+    {
+      "id": "authentication",
+      "from": "Gateway",
+      "to": "Identity",
+      "data": "The presented API key, checked on every request; the key is not forwarded",
+      "storage": "identity.api_keys (hash and metadata)",
+      "status": "active"
+    },
+    {
+      "id": "secret-management",
+      "from": "Firm administrator through the gateway",
+      "to": "Vault",
+      "data": "Provider credential on write; metadata only on read. Values are never returned.",
+      "storage": "vault.secrets, vault.secret_audit",
+      "status": "active"
+    },
+    {
+      "id": "privacy-management",
+      "from": "Firm administrator through the gateway",
+      "to": "Capture-hub",
+      "data": "Domain, client or matter exclusion and an optional reason",
+      "storage": "capture.exclusions",
+      "status": "active"
+    },
+    {
+      "id": "event-relay",
+      "from": "Capture-hub outbox",
+      "to": "The service log (a broker is not deployed yet)",
+      "data": "Activity event envelopes without content or credentials",
+      "storage": "platform.outbox",
+      "status": "active"
+    },
+    {
+      "id": "mail-and-calendar-connectors",
+      "from": "Microsoft 365 or Google Workspace",
+      "to": "Capture-hub",
+      "data": "Mail and calendar metadata",
+      "storage": "capture.activity_events (planned)",
+      "status": "not_active"
+    },
+    {
+      "id": "model-inference",
+      "from": "mcp-host",
+      "to": "Anthropic API",
+      "data": "Prompts derived from activity metadata or redacted content",
+      "storage": "No model calls are routed in this build.",
+      "status": "not_active"
+    }
+  ],
+  "processors": [
+    {
+      "name": "PostgreSQL",
+      "purpose": "Primary store for identity, capture, vault and outbox data",
+      "region": "The deployment region (self-hosted: the firm's own infrastructure)",
+      "status": "active"
+    },
+    {
+      "name": "SeaweedFS",
+      "purpose": "S3-compatible object storage in the development stack",
+      "region": "The development host",
+      "status": "development_only"
+    },
+    {
+      "name": "Anthropic",
+      "purpose": "Model inference when a firm configures a key",
+      "region": "Global or United States; no African inference region is offered",
+      "status": "not_active"
+    },
+    {
+      "name": "Microsoft Graph",
+      "purpose": "Mail and calendar capture",
+      "region": "Microsoft 365 tenant region",
+      "status": "not_active"
+    },
+    {
+      "name": "Google Workspace",
+      "purpose": "Mail and calendar capture",
+      "region": "Google Workspace tenant region",
+      "status": "not_active"
+    }
+  ],
+  "exclusions": {
+    "enforcedAtCapture": ["domain"],
+    "recordedForAttribution": ["client", "matter"],
+    "appliesToExistingEvents": false
+  },
+  "retentionNote": "No automatic retention or deletion policy is configured in this build. A firm's retention rules are a deployment and Phase 4 concern; this register will state them here when they exist."
+}

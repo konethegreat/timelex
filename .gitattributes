@@ -2,3 +2,6 @@
 # Container scripts run in Linux images; a CRLF checkout would break their shebangs.
 *.sh text eol=lf
 Dockerfile text eol=lf
+# Migration runners checksum the file bytes. A CRLF checkout on Windows would look like an edit
+# and refuse an already-applied migration.
+*.sql text eol=lf

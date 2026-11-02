@@ -10,7 +10,7 @@
 
 </div>
 
-> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, a person can record a call, meeting or note by hand at `/capture`, and firm-level privacy exclusions stop an excluded domain before it becomes an event, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
+> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, a person can record a call, meeting or note by hand at `/capture`, firm-level privacy exclusions stop an excluded domain before it becomes an event, and the gateway serves a versioned data-flow register with an admin privacy page at `/privacy`, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
 
 ## Why this exists
 

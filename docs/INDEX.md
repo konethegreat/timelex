@@ -60,5 +60,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0021](adr/0021-idempotent-capture-and-replay.md) | Idempotent capture, connector cursors and replay | Accepted |
 | [0022](adr/0022-manual-quick-capture.md) | Manual quick capture: an entry becomes an activity event | Accepted |
 | [0023](adr/0023-privacy-exclusions.md) | Privacy exclusions are enforced before an event exists | Accepted |
+| [0024](adr/0024-data-flow-register-and-disclosure.md) | Disclosure is a versioned register, served as it is | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

@@ -62,6 +62,8 @@ curl -sS -X DELETE http://127.0.0.1:8088/v1/privacy/exclusions/domain/example.co
   -H "authorization: Bearer $API_KEY"
 ```
 
+Open `http://127.0.0.1:8088/privacy` for the same register and exclusion manager in a browser. The register is also downloadable without a key at `GET /v1/privacy/data-flow`; it describes the build, contains no tenant data and is explicitly not legal advice ([ADR-0024](../docs/adr/0024-data-flow-register-and-disclosure.md)).
+
 Request counters are on the gateway's loopback-only listener inside the container:
 
 ```bash

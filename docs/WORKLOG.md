@@ -4,7 +4,31 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-02 (latest): P2-07 — privacy exclusions act before an event exists
+## 2026-11-02 (latest): P2-10 — a firm can read and export what this build does with its data
+
+**Trigger:** ADR-0007 point 7 requires every tenant to have an exportable record of what data goes to
+which processor for the firm's POPIA documentation. P2-07 also promised that adding an exclusion would
+not clean the past, so that warning needed a surface the firm would actually see. An administrator had
+routes for exclusions but no page, and no committed description of the build's data flows.
+
+**Done**
+- [`contracts/privacy/data-flow.v1.json`](../contracts/privacy/data-flow.v1.json) is a versioned (1.0) technical register: scope, disclaimer, capture defaults, 8 data categories, 8 flows, 5 processors, the exclusion scope and a retention note. Every flow and processor carries `active`, `development_only` or `not_active`, so an unbuilt connector is visible rather than omitted. The register states that content is not captured by default, that redaction is required before content, that manual entries keep only the title, that domain exclusions run before storage, that exclusions do not apply to existing events and that no automatic retention is configured.
+- [`gateway`](../services/gateway) serves the committed file at open `GET /v1/privacy/data-flow` with `no-store`, `nosniff` and `application/json`, and serves the admin page at `GET /privacy` through the same strict-CSP helper as `/capture` ([`lib.rs`](../services/gateway/src/lib.rs)). [`privacy.html`](../services/gateway/assets/privacy.html) renders the register, offers the JSON download, and lists, adds and removes exclusions with the existing routes. The page keeps the API key in memory, uses `textContent` only, loads no external asset and has no em dashes.
+- [`gateway.v1.yaml`](../contracts/openapi/gateway.v1.yaml) becomes 0.7.0 with the data-flow path and a `DataFlowRegister` schema; the SDK is regenerated and the drift check passes. [ADR-0024](adr/0024-data-flow-register-and-disclosure.md) records the choices. Docs updated: TASKS, ARCHITECTURE, INDEX, gateway README and the root pre-alpha note.
+- Tests: 2 new gateway unit tests. One serves `/privacy` and checks its headers, its links, the `settings:manage` note and the absence of storage, `innerHTML` and external URLs. The other serves the register and checks version 1.0, the honest defaults, `appliesToExistingEvents: false`, the non-empty tables, the known flow statuses and the absence of credential-shaped strings. Gateway counts: 28 unit, 2 contract, 31 routing, 9 end-to-end.
+- **Line-ending repair:** the rebuilt compose image refused the already-applied migrations because Git had checked the `.sql` files out with CRLF while sqlx had recorded the LF checksums. The recorded values matched the CRLF bytes exactly for identity 1, vault 1 and capture 1, proving the content had not changed. [`.gitattributes`](../.gitattributes) now pins `*.sql` to LF, the worktree files were rewritten from their index blobs, and the three checksum rows were corrected in place. No schema or data was dropped.
+- Verification: fmt clean, clippy `-D warnings` clean, the full workspace green with the test database, `npm run build`, `npm test` and `npm run check:sdk` green, and 520 links across 75 Markdown files resolve. The compose stack rebuilt and came up healthy. A Playwright run on `/privacy` rendered the register, connected a fresh admin key, added `Excluded.Example.TEST.` (stored as `excluded.example.test` with its reason), added the same domain again (200, "already configured", still one row), added a client `CL-2026-0042` (case kept), removed both, and ended at "No exclusions configured" with no console errors and no web storage.
+
+**Decisions and why**
+- **One static register, not a generated per-tenant document.** The flows are properties of the build, not the tenant, and per-firm processor choices do not exist yet. A committed file with a version can be reviewed and diffed; a generated document would imply tailoring the build cannot honour.
+- **Inactive things are listed and labelled.** Omitting a processor is indistinguishable from not disclosing it. `not_active` makes the gap explicit for the firm and for the next engineer.
+- **Facts, not promises, and a disclaimer.** The register repeats what a reader can check in the code and says plainly that it is not legal advice. It also states that exclusions do not clean the past, so the firm's own notice cannot accidentally claim otherwise.
+- **The admin page has no privileged path.** It calls the same public routes as any client, so capture still enforces `settings:manage` and there is no second authorization model to get wrong. The key stays in memory, following the P2-08 decision after CodeQL flagged storage.
+- **The migration fix corrects bytes, not history.** The checksums were rewritten only after proving the files differed solely by line endings, and neither schemas nor rows were touched.
+
+**Next:** a signed per-user consent artefact and a per-firm layer for processor and region choices remain open under P2-10. The redaction worker queue and container are the second half of P2-07. P2-03 still needs a real Microsoft 365 test tenant. P1-12 remains a repository setting.
+
+## 2026-11-02: P2-07 — privacy exclusions act before an event exists
 
 **Trigger:** a firm must be able to say what must never be captured, and the promise has to be true before the signal becomes history. An activity event is immutable, is copied into the outbox and will be cited by time entries and bills, so filtering after storage would hide a row that already exists rather than prevent capture. The filter also has to sit below the gateway, because connectors call the store directly, and it has to stop unredacted content entering the event store before the redaction worker is deployed.
 
