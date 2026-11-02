@@ -1,10 +1,10 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (draft 0.6.0). Contract-first: this file leads the code (ADR-0001).
+# Gateway contract v1 (draft 0.7.0). Contract-first: this file leads the code (ADR-0001).
 # Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml, vault.v1.yaml, capture.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.6.0
+  version: 0.7.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
     Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway authenticates callers and
@@ -14,7 +14,8 @@ info:
     list, test, rotate and revoke provider keys without reaching the vault directly. Since 0.5.0 it
     routes manual quick capture, so a person can record work no connector saw. Since 0.6.0 it routes
     privacy exclusions, so a firm's admin can list, add and remove the domains, clients and matters
-    capture must never store. Everything else arrives with its service. Every capability is also
+    capture must never store. Since 0.7.0 it serves a technical data-flow register and an admin
+    privacy page at `/privacy`. Everything else arrives with its service. Every capability is also
     exposed as MCP tools; see `contracts/mcp/tools.md`.
 
     **Authentication.** Tenant calls carry `Authorization: Bearer tlx_...` (an API key from
@@ -481,6 +482,22 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/privacy/data-flow:
+    get:
+      operationId: getDataFlowRegister
+      summary: Technical data-flow register for the firm's POPIA records
+      description: |
+        Open. A versioned technical record of what this build stores, where it goes and which
+        processors are active. It describes the platform, not a firm, and carries no tenant data, so
+        the same register is served to every caller and can be attached to a firm's POPIA
+        documentation. It is explicitly not legal advice (ADR-0007 point 7).
+      security: []
+      responses:
+        "200":
+          description: The current register.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataFlowRegister" }
 components:
   responses:
     Invalid:
@@ -550,6 +567,76 @@ components:
         detail: { type: string }
         instance: { type: string }
         traceId: { type: string }
+    DataFlowRegister:
+      description: |
+        A versioned technical record of this build's data flows, storage and processors. It holds no
+        tenant data. It is a factual engineering record for a firm's POPIA documentation, not legal
+        advice.
+      type: object
+      required: [version, updatedAt, scope, disclaimer, captureDefaults, dataCategories, flows, processors, exclusions, retentionNote]
+      properties:
+        version: { type: string, description: "Register version, e.g. 1.0" }
+        updatedAt: { type: string, format: date }
+        scope: { type: string, description: "What part of the product this register describes" }
+        disclaimer: { type: string }
+        captureDefaults:
+          type: object
+          required: [contentCaptured, redactionRequiredBeforeContent, manualEntriesStoreTitleOnly, domainExclusionsEnforcedBeforeStorage]
+          properties:
+            contentCaptured: { type: boolean }
+            redactionRequiredBeforeContent: { type: boolean }
+            manualEntriesStoreTitleOnly: { type: boolean }
+            domainExclusionsEnforcedBeforeStorage: { type: boolean }
+        dataCategories:
+          type: array
+          items:
+            type: object
+            required: [id, description, containsPersonalData, storage, retention]
+            properties:
+              id: { type: string }
+              description: { type: string }
+              containsPersonalData: { type: boolean }
+              storage: { type: string }
+              retention: { type: string }
+        flows:
+          type: array
+          items:
+            type: object
+            required: [id, from, to, data, storage, status]
+            properties:
+              id: { type: string }
+              from: { type: string }
+              to: { type: string }
+              data: { type: string }
+              storage: { type: string }
+              status: { type: string, enum: [active, development_only, not_active] }
+        processors:
+          type: array
+          items:
+            type: object
+            required: [name, purpose, region, status]
+            properties:
+              name: { type: string }
+              purpose: { type: string }
+              region: { type: string }
+              status: { type: string, enum: [active, development_only, not_active] }
+        exclusions:
+          type: object
+          required: [enforcedAtCapture, recordedForAttribution, appliesToExistingEvents]
+          properties:
+            enforcedAtCapture:
+              type: array
+              description: Exclusion kinds enforced before an event is stored.
+              items: { type: string, enum: [domain, client, matter] }
+            recordedForAttribution:
+              type: array
+              description: Exclusion kinds recorded now and enforced when attribution exists.
+              items: { type: string, enum: [domain, client, matter] }
+            appliesToExistingEvents:
+              type: boolean
+              description: False when a new exclusion changes nothing already stored.
+              const: false
+        retentionNote: { type: string }
   securitySchemes:
     apiKey:
       type: http

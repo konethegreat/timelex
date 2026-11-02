@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy | TimeLex</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #172121;
+    --muted: #5b6b6b;
+    --line: #d7dfde;
+    --paper: #f2f5f4;
+    --panel: #ffffff;
+    --accent: #155e63;
+    --accent-strong: #0e464a;
+    --danger: #8a2c2c;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { margin-bottom: 28px; }
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0 0 8px; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; }
+  .lede { margin: 0; max-width: 680px; color: var(--muted); font-size: 18px; }
+  section {
+    margin: 0 0 22px;
+    padding: 24px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  h2 { margin: 0 0 10px; font-size: 20px; }
+  h3 { margin: 22px 0 8px; font-size: 15px; letter-spacing: 0.02em; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .section-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  a { color: var(--accent-strong); }
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 3px solid #8fc7c4;
+    outline-offset: 2px;
+  }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .fact {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #f8faf9;
+  }
+  .fact dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .fact dd { margin: 4px 0 0; font-weight: 650; }
+  .scroll { overflow-x: auto; margin: 0 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  .status-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e7efee;
+    color: var(--accent-strong);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 0 0 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 160px; }
+  .field.grow { flex: 2 1 240px; }
+  label { font-size: 13px; font-weight: 650; }
+  input, select {
+    width: 100%;
+    padding: 10px 11px;
+    border: 1px solid #b9c5c4;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+  }
+  button {
+    padding: 10px 16px;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-strong); }
+  button.ghost {
+    background: transparent;
+    color: var(--accent-strong);
+    border-color: #b9c5c4;
+    padding: 7px 12px;
+  }
+  button.ghost:hover { background: #edf3f2; }
+  #status { min-height: 24px; margin: 8px 0; font-size: 14px; color: var(--accent-strong); }
+  #status.error { color: var(--danger); }
+  #list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  #list li {
+    display: flex;
+    gap: 12px;
+    align-items: start;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+  }
+  #list li.empty { justify-content: center; color: var(--muted); }
+  .exclusion-main p { margin: 3px 0 0; }
+  footer { margin-top: 26px; color: var(--muted); font-size: 13px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 560px) {
+    .wrap { padding: 22px 14px 44px; }
+    section { padding: 18px; }
+    #list li { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">TimeLex</p>
+    <h1>Privacy</h1>
+    <p class="lede">See what this build records, and stop capture from a domain, client or matter.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="register-title">
+      <div class="section-head">
+        <h2 id="register-title">Data-flow register</h2>
+        <a id="download" href="/v1/privacy/data-flow" download="timelex-data-flow.v1.json">Download JSON</a>
+      </div>
+      <p id="register-meta" class="muted">Loading the register...</p>
+      <div id="register"></div>
+    </section>
+
+    <section aria-labelledby="exclusions-title">
+      <h2 id="exclusions-title">Exclusions</h2>
+      <p>A domain exclusion is enforced when a signal arrives, before anything is stored. Client and matter exclusions are recorded now and applied when attribution exists.</p>
+
+      <form id="connect-form">
+        <div class="field grow">
+          <label for="key">Admin API key</label>
+          <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="tlx_...">
+        </div>
+        <button type="submit">Connect</button>
+      </form>
+      <p class="muted small">The key stays in this page's memory. It is not saved, and a reload asks for it again. It needs the <code>settings:manage</code> permission.</p>
+
+      <div id="exclusion-area" hidden>
+        <form id="add-form">
+          <div class="field">
+            <label for="kind">Kind</label>
+            <select id="kind">
+              <option value="domain">Domain</option>
+              <option value="client">Client</option>
+              <option value="matter">Matter</option>
+            </select>
+          </div>
+          <div class="field grow">
+            <label for="value">Value</label>
+            <input id="value" required maxlength="253" placeholder="example.com or CL-2026-0042">
+          </div>
+          <div class="field grow">
+            <label for="reason">Reason (optional)</label>
+            <input id="reason" maxlength="500" placeholder="Why this must not be captured">
+          </div>
+          <button type="submit">Add exclusion</button>
+        </form>
+        <p id="status" role="status" aria-live="polite"></p>
+        <div class="section-head">
+          <h3>Configured exclusions</h3>
+          <button id="refresh" class="ghost" type="button">Refresh</button>
+        </div>
+        <ul id="list"></ul>
+      </div>
+    </section>
+
+    <section aria-labelledby="limits-title">
+      <h2 id="limits-title">What this build does not do</h2>
+      <ul class="muted">
+        <li>It captures metadata by default. Content is accepted only after redaction, and no content store is wired yet.</li>
+        <li>It does not delete events automatically, and adding an exclusion does not change events already stored.</li>
+        <li>It does not call a model. The data-flow register says when that changes.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>Technical record, not legal advice. See ADR-0007 and ADR-0023 in the repository.</footer>
+</div>
+
+<noscript><p class="wrap">This page needs JavaScript to load the register and manage exclusions.</p></noscript>
+
+<script>
+(() => {
+  "use strict";
+
+  const byId = (id) => document.getElementById(id);
+  let apiKey = "";
+
+  const label = (value) =>
+    String(value == null ? "" : value).replaceAll("_", " ");
+
+  const setStatus = (message, isError) => {
+    const status = byId("status");
+    status.textContent = message;
+    status.classList.toggle("error", Boolean(isError));
+  };
+
+  const renderTable = (target, headers, rows) => {
+    const scroll = document.createElement("div");
+    scroll.className = "scroll";
+    const table = document.createElement("table");
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    headers.forEach((heading) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = heading;
+      headRow.appendChild(th);
+    });
+    head.appendChild(headRow);
+    table.appendChild(head);
+    const body = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      row.forEach((cell, index) => {
+        const td = document.createElement("td");
+        if (index === row.length - 1 && (cell === "active" || cell === "not_active" || cell === "development_only")) {
+          const pill = document.createElement("span");
+          pill.className = "status-pill";
+          pill.textContent = label(cell);
+          td.appendChild(pill);
+        } else {
+          td.textContent = typeof cell === "boolean" ? (cell ? "Yes" : "No") : String(cell == null ? "" : cell);
+        }
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    scroll.appendChild(table);
+    target.appendChild(scroll);
+  };
+
+  const heading = (target, text) => {
+    const h3 = document.createElement("h3");
+    h3.textContent = text;
+    target.appendChild(h3);
+  };
+
+  const renderRegister = (register) => {
+    byId("register-meta").textContent =
+      "Version " + register.version + ". Updated " + register.updatedAt + ". " + register.scope + ".";
+
+    const target = byId("register");
+    target.textContent = "";
+
+    const disclaimer = document.createElement("p");
+    disclaimer.className = "muted";
+    disclaimer.textContent = register.disclaimer;
+    target.appendChild(disclaimer);
+
+    heading(target, "Capture defaults");
+    const facts = document.createElement("dl");
+    facts.className = "grid";
+    const defaults = register.captureDefaults || {};
+    [
+      ["Content captured by default", defaults.contentCaptured],
+      ["Redaction before content", defaults.redactionRequiredBeforeContent],
+      ["Manual entries keep the title only", defaults.manualEntriesStoreTitleOnly],
+      ["Domain exclusions before storage", defaults.domainExclusionsEnforcedBeforeStorage]
+    ].forEach(([term, value]) => {
+      const fact = document.createElement("div");
+      fact.className = "fact";
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      dd.textContent = value ? "Yes" : "No";
+      fact.appendChild(dt);
+      fact.appendChild(dd);
+      facts.appendChild(fact);
+    });
+    target.appendChild(facts);
+
+    heading(target, "Data categories");
+    renderTable(
+      target,
+      ["Category", "What is recorded", "Where it is stored", "Personal data"],
+      (register.dataCategories || []).map((item) => [
+        item.id,
+        item.description,
+        item.storage,
+        item.containsPersonalData
+      ])
+    );
+
+    heading(target, "Flows");
+    renderTable(
+      target,
+      ["From", "To", "Data", "Status"],
+      (register.flows || []).map((flow) => [flow.from, flow.to, flow.data, flow.status])
+    );
+
+    heading(target, "Processors");
+    renderTable(
+      target,
+      ["Processor", "Purpose", "Region", "Status"],
+      (register.processors || []).map((processor) => [
+        processor.name,
+        processor.purpose,
+        processor.region,
+        processor.status
+      ])
+    );
+
+    heading(target, "Retention");
+    const retention = document.createElement("p");
+    retention.className = "muted";
+    retention.textContent = register.retentionNote;
+    target.appendChild(retention);
+  };
+
+  const loadRegister = async () => {
+    try {
+      const response = await fetch("/v1/privacy/data-flow", { headers: { accept: "application/json" } });
+      if (!response.ok) throw new Error("The register answered " + response.status + ".");
+      renderRegister(await response.json());
+    } catch (error) {
+      byId("register-meta").textContent = "The register could not be loaded. Download the JSON directly.";
+      byId("register-meta").classList.add("error");
+      console.error(error);
+    }
+  };
+
+  const request = async (path, options) => {
+    const requestOptions = Object.assign({}, options || {});
+    requestOptions.headers = Object.assign(
+      { authorization: "Bearer " + apiKey },
+      requestOptions.headers || {}
+    );
+    const response = await fetch(path, requestOptions);
+    let body = null;
+    if (response.status !== 204) {
+      try { body = await response.json(); } catch (_) { body = null; }
+    }
+    if (!response.ok) {
+      const detail = body && typeof body.detail === "string" ? body.detail : "Request failed (" + response.status + ").";
+      throw new Error(detail);
+    }
+    return { response, body };
+  };
+
+  const renderList = (exclusions) => {
+    const list = byId("list");
+    list.textContent = "";
+    if (!exclusions.length) {
+      const item = document.createElement("li");
+      item.className = "empty";
+      item.textContent = "No exclusions configured.";
+      list.appendChild(item);
+      return;
+    }
+    exclusions.forEach((exclusion) => {
+      const item = document.createElement("li");
+      const main = document.createElement("div");
+      main.className = "exclusion-main";
+      const title = document.createElement("strong");
+      title.textContent = exclusion.kind + ": " + exclusion.value;
+      main.appendChild(title);
+      if (exclusion.reason) {
+        const reason = document.createElement("p");
+        reason.className = "muted";
+        reason.textContent = exclusion.reason;
+        main.appendChild(reason);
+      }
+      const created = document.createElement("p");
+      created.className = "muted small";
+      created.textContent = "Added " + exclusion.createdAt;
+      main.appendChild(created);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => removeExclusion(exclusion.kind, exclusion.value));
+      item.appendChild(main);
+      item.appendChild(remove);
+      list.appendChild(item);
+    });
+  };
+
+  const refresh = async (message) => {
+    const { body } = await request("/v1/privacy/exclusions");
+    const exclusions = (body && body.exclusions) || [];
+    renderList(exclusions);
+    byId("exclusion-area").hidden = false;
+    setStatus(message || exclusions.length + " exclusion" + (exclusions.length === 1 ? "" : "s") + " configured.", false);
+  };
+
+  const removeExclusion = async (kind, value) => {
+    try {
+      await request(
+        "/v1/privacy/exclusions/" + encodeURIComponent(kind) + "/" + encodeURIComponent(value),
+        { method: "DELETE" }
+      );
+      await refresh("Exclusion removed.");
+    } catch (error) {
+      try { await refresh(error.message); } catch (_) { setStatus(error.message, true); }
+    }
+  };
+
+  byId("connect-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const key = byId("key").value.trim();
+    if (!key) {
+      setStatus("Enter an admin API key first.", true);
+      return;
+    }
+    apiKey = key;
+    try {
+      await refresh();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+
+  byId("add-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const kind = byId("kind").value;
+    const value = byId("value").value.trim();
+    const reason = byId("reason").value.trim();
+    if (!value) {
+      setStatus("Enter a domain, client or matter value.", true);
+      return;
+    }
+    const payload = { kind, value };
+    if (reason) payload.reason = reason;
+    try {
+      const { response } = await request("/v1/privacy/exclusions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      byId("value").value = "";
+      byId("reason").value = "";
+      await refresh(response.status === 201 ? "Exclusion added." : "That exclusion was already configured.");
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+
+  byId("refresh").addEventListener("click", async () => {
+    try { await refresh(); } catch (error) { setStatus(error.message, true); }
+  });
+
+  loadRegister();
+})();
+</script>
+</body>
+</html>

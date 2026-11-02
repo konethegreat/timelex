@@ -129,6 +129,29 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/v1/privacy/data-flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Technical data-flow register for the firm's POPIA records
+         * @description Open. A versioned technical record of what this build stores, where it goes and which
+         *     processors are active. It describes the platform, not a firm, and carries no tenant data, so
+         *     the same register is served to every caller and can be attached to a firm's POPIA
+         *     documentation. It is explicitly not legal advice (ADR-0007 point 7).
+         */
+        get: operations["getDataFlowRegister"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/privacy/exclusions": {
         parameters: {
             query?: never;
@@ -307,6 +330,61 @@ export type components = {
             initialApiKey: components["schemas"]["IssuedApiKey"];
             slug: components["schemas"]["TenantSlug"];
             tenantId: components["schemas"]["Uuid"];
+        };
+        /**
+         * @description A versioned technical record of this build's data flows, storage and processors. It holds no
+         *     tenant data. It is a factual engineering record for a firm's POPIA documentation, not legal
+         *     advice.
+         */
+        DataFlowRegister: {
+            captureDefaults: {
+                contentCaptured: boolean;
+                domainExclusionsEnforcedBeforeStorage: boolean;
+                manualEntriesStoreTitleOnly: boolean;
+                redactionRequiredBeforeContent: boolean;
+            };
+            dataCategories: {
+                containsPersonalData: boolean;
+                description: string;
+                id: string;
+                retention: string;
+                storage: string;
+            }[];
+            disclaimer: string;
+            exclusions: {
+                /**
+                 * @description False when a new exclusion changes nothing already stored.
+                 * @constant
+                 */
+                appliesToExistingEvents: false;
+                /** @description Exclusion kinds enforced before an event is stored. */
+                enforcedAtCapture: ("domain" | "client" | "matter")[];
+                /** @description Exclusion kinds recorded now and enforced when attribution exists. */
+                recordedForAttribution: ("domain" | "client" | "matter")[];
+            };
+            flows: {
+                data: string;
+                from: string;
+                id: string;
+                /** @enum {string} */
+                status: "active" | "development_only" | "not_active";
+                storage: string;
+                to: string;
+            }[];
+            processors: {
+                name: string;
+                purpose: string;
+                region: string;
+                /** @enum {string} */
+                status: "active" | "development_only" | "not_active";
+            }[];
+            retentionNote: string;
+            /** @description What part of the product this register describes */
+            scope: string;
+            /** Format: date */
+            updatedAt: string;
+            /** @description Register version, e.g. 1.0 */
+            version: string;
         };
         Exclusion: {
             /** Format: date-time */
@@ -762,6 +840,26 @@ export interface operations {
                         stage: string;
                         version: string;
                     };
+                };
+            };
+        };
+    };
+    getDataFlowRegister: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current register. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataFlowRegister"];
                 };
             };
         };
