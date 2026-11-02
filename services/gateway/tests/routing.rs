@@ -368,6 +368,97 @@ async fn a_quick_capture_entry_goes_to_capture_not_identity_and_keeps_the_body()
 }
 
 #[tokio::test]
+async fn privacy_exclusions_go_to_capture_with_their_kind_and_value() {
+    let s = stub(happy).await;
+    let url = format!("http://{}", s.addr);
+    let gw = gateway_services(
+        &[("identity", url.clone()), ("capture", url)],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    let body = json!({"kind": "domain", "value": "example.com"}).to_string();
+
+    let r = post_as(
+        &gw.app,
+        "/v1/privacy/exclusions",
+        TENANT_KEY.as_str(),
+        Some(&body),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    let r = send_as(
+        &gw.app,
+        Method::GET,
+        "/v1/privacy/exclusions",
+        TENANT_KEY.as_str(),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+    let r = send_as(
+        &gw.app,
+        Method::DELETE,
+        "/v1/privacy/exclusions/domain/EXAMPLE.com",
+        TENANT_KEY.as_str(),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text);
+
+    let calls = s.calls();
+    assert_eq!(calls.len(), 6, "three authenticate calls, three forwards");
+    assert_eq!(calls[1].path, "/v1/exclusions");
+    assert_eq!(calls[1].body, body);
+    assert_eq!(
+        (calls[3].method.as_str(), calls[3].path.as_str()),
+        ("GET", "/v1/exclusions")
+    );
+    assert_eq!(
+        (calls[5].method.as_str(), calls[5].path.as_str()),
+        ("DELETE", "/v1/exclusions/domain/EXAMPLE.com")
+    );
+    let verified = gw
+        .verifier("capture")
+        .verify(
+            calls[5]
+                .header("authorization")
+                .unwrap()
+                .strip_prefix("Bearer ")
+                .unwrap(),
+        )
+        .unwrap();
+    match verified.caller {
+        Caller::Principal(p) => assert_eq!(p.tenant.as_uuid(), Uuid::from_u128(11)),
+        other => panic!("expected a principal, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_malformed_exclusion_never_reaches_capture() {
+    let s = stub(happy).await;
+    let url = format!("http://{}", s.addr);
+    let gw = gateway_services(
+        &[("identity", url.clone()), ("capture", url)],
+        Duration::from_secs(2),
+        600,
+        120,
+    );
+    for path in [
+        "/v1/privacy/exclusions/phone/example.com",
+        "/v1/privacy/exclusions/domain/not%20a%20domain",
+        "/v1/privacy/exclusions/domain/%2Fetc",
+    ] {
+        let r = send_as(&gw.app, Method::DELETE, path, TENANT_KEY.as_str(), None).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{path}");
+        assert!(r.text.contains("urn:timelex:problem:invalid-request"));
+    }
+    let calls = s.calls();
+    assert_eq!(calls.len(), 3, "only the authentication calls happened");
+    assert!(calls.iter().all(|c| c.path == "/v1/authenticate"));
+}
+
+#[tokio::test]
 async fn nothing_a_client_chose_reaches_the_service_except_the_body() {
     let s = stub(happy).await;
     let gw = gateway(format!("http://{}", s.addr), Duration::from_secs(2));

@@ -129,6 +129,55 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/v1/privacy/exclusions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the firm's privacy exclusions
+         * @description Routed to capture. Requires `settings:manage`; capture enforces it. Same response as
+         *     `capture.v1.yaml` `listExclusions`. Domains are stored lower-case with no trailing dot.
+         */
+        get: operations["listExclusions"];
+        put?: never;
+        /**
+         * Configure a privacy exclusion (idempotent)
+         * @description Routed to capture. Requires `settings:manage`. Same request and response as
+         *     `capture.v1.yaml` `addExclusion`: 201 adds it, 200 means the same kind and value was already
+         *     excluded and nothing changed. A domain exclusion covers subdomains.
+         */
+        post: operations["addExclusion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/exclusions/{kind}/{value}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Stop excluding a domain, client or matter
+         * @description Routed to capture. Requires `settings:manage`. The gateway forwards only a known kind and a
+         *     URL-safe value; anything else is a 400 without reaching capture. Same response as
+         *     `capture.v1.yaml` `removeExclusion`.
+         */
+        delete: operations["removeExclusion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/secrets": {
         parameters: {
             query?: never;
@@ -259,8 +308,31 @@ export type components = {
             slug: components["schemas"]["TenantSlug"];
             tenantId: components["schemas"]["Uuid"];
         };
+        Exclusion: {
+            /** Format: date-time */
+            createdAt: string;
+            kind: components["schemas"]["ExclusionKind"];
+            /** @description An optional note from the person who configured it. */
+            reason?: string;
+            /** @description The canonical value. Domains are lower-case with no trailing dot. */
+            value: string;
+        };
+        /**
+         * @description What is excluded. A domain is enforced at capture; client and matter are enforced when attribution exists (P3).
+         * @enum {string}
+         */
+        ExclusionKind: "domain" | "client" | "matter";
+        ExclusionList: {
+            exclusions: components["schemas"]["Exclusion"][];
+        };
+        ExclusionResult: {
+            /** @description True when this call added the exclusion; false when it was already there. */
+            created: boolean;
+            kind: components["schemas"]["ExclusionKind"];
+            value: string;
+        };
         IngestResult: {
-            /** @description True when this delivery stored the event; false when it was already stored. */
+            /** @description True when this delivery stored the event; false when it was already stored or the firm excludes the signal. */
             created: boolean;
             /** @description The event's canonical id, echoed so a sender can record what the service kept. */
             id: string;
@@ -309,6 +381,13 @@ export type components = {
             kind: "call" | "meeting" | "manual_entry";
             /** Format: date-time */
             startedAt: string;
+        };
+        NewExclusion: {
+            kind: components["schemas"]["ExclusionKind"];
+            /** @description An optional note, plain text only. */
+            reason?: string;
+            /** @description A domain (case-insensitive, subdomains included) or a client or matter identifier of at most 128 characters. */
+            value: string;
         };
         /**
          * @description One thing that can be done. Also the vocabulary of API-key scopes.
@@ -685,6 +764,100 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    listExclusions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The firm's exclusions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExclusionList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["BadGateway"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    addExclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewExclusion"];
+            };
+        };
+        responses: {
+            /** @description The exclusion was already there; nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExclusionResult"];
+                };
+            };
+            /** @description The exclusion is new. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExclusionResult"];
+                };
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["TooLarge"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["BadGateway"];
+            504: components["responses"]["GatewayTimeout"];
+        };
+    };
+    removeExclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "domain" | "client" | "matter";
+                /** @description The value as configured; domains ignore case and a trailing dot. */
+                value: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Invalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["BadGateway"];
+            504: components["responses"]["GatewayTimeout"];
         };
     };
     listSecrets: {

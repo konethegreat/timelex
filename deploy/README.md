@@ -48,6 +48,20 @@ curl -sS -X POST http://127.0.0.1:8088/v1/capture/entries \
   -d '{"entryId":"7f6a1c2e-3b4d-4e5f-8a9b-0c1d2e3f4a5b","kind":"call","startedAt":"2026-11-02T09:00:00Z","endedAt":"2026-11-02T09:20:00Z","description":"Call with the client about the lease"}'
 ```
 
+A firm can exclude a domain, client or matter. Domain exclusions are enforced at capture, so a signal from that domain is never stored; a repeat add is idempotent and a missing remove is 404 ([ADR-0023](../docs/adr/0023-privacy-exclusions.md)):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8088/v1/privacy/exclusions \
+  -H "authorization: Bearer $API_KEY" \
+  -H 'content-type: application/json' \
+  -d '{"kind":"domain","value":"example.com","reason":"Client asked us not to capture"}'
+
+curl -sS http://127.0.0.1:8088/v1/privacy/exclusions -H "authorization: Bearer $API_KEY"
+
+curl -sS -X DELETE http://127.0.0.1:8088/v1/privacy/exclusions/domain/example.com \
+  -H "authorization: Bearer $API_KEY"
+```
+
 Request counters are on the gateway's loopback-only listener inside the container:
 
 ```bash

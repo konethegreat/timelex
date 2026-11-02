@@ -1,10 +1,10 @@
 # Written by Kone Tshivhinda & Claude
-# Gateway contract v1 (draft 0.5.0). Contract-first: this file leads the code (ADR-0001).
+# Gateway contract v1 (draft 0.6.0). Contract-first: this file leads the code (ADR-0001).
 # Internal design: ADR-0012, ADR-0013 and contracts/internal-auth.md. Service contracts it fronts: identity.v1.yaml, vault.v1.yaml, capture.v1.yaml.
 openapi: 3.1.0
 info:
   title: TimeLex Gateway
-  version: 0.5.0
+  version: 0.6.0
   summary: Edge API for TimeLex (pre-alpha).
   description: |
     Pre-alpha. `/health` and `/v1/meta` are open. Since 0.2.0 the gateway authenticates callers and
@@ -12,9 +12,10 @@ info:
     also enforces per-firm request limits, records usage metadata and routes MCP `tools/call` requests
     by header. Since 0.4.0 it routes the five vault secrets operations, so a firm's admin can store,
     list, test, rotate and revoke provider keys without reaching the vault directly. Since 0.5.0 it
-    routes manual quick capture, so a person can record work no connector saw. Everything else
-    arrives with its service. Every capability is also exposed as MCP tools; see
-    `contracts/mcp/tools.md`.
+    routes manual quick capture, so a person can record work no connector saw. Since 0.6.0 it routes
+    privacy exclusions, so a firm's admin can list, add and remove the domains, clients and matters
+    capture must never store. Everything else arrives with its service. Every capability is also
+    exposed as MCP tools; see `contracts/mcp/tools.md`.
 
     **Authentication.** Tenant calls carry `Authorization: Bearer tlx_...` (an API key from
     `issueApiKey` or `createTenant`). The gateway checks the key with the identity service on **every**
@@ -401,6 +402,82 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/privacy/exclusions:
+    get:
+      operationId: listExclusions
+      summary: List the firm's privacy exclusions
+      description: |
+        Routed to capture. Requires `settings:manage`; capture enforces it. Same response as
+        `capture.v1.yaml` `listExclusions`. Domains are stored lower-case with no trailing dot.
+      responses:
+        "200":
+          description: The firm's exclusions.
+          content:
+            application/json:
+              schema: { $ref: "capture.v1.yaml#/components/schemas/ExclusionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+    post:
+      operationId: addExclusion
+      summary: Configure a privacy exclusion (idempotent)
+      description: |
+        Routed to capture. Requires `settings:manage`. Same request and response as
+        `capture.v1.yaml` `addExclusion`: 201 adds it, 200 means the same kind and value was already
+        excluded and nothing changed. A domain exclusion covers subdomains.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "capture.v1.yaml#/components/schemas/NewExclusion" }
+      responses:
+        "201":
+          description: The exclusion is new.
+          content:
+            application/json:
+              schema: { $ref: "capture.v1.yaml#/components/schemas/ExclusionResult" }
+        "200":
+          description: The exclusion was already there; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: "capture.v1.yaml#/components/schemas/ExclusionResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "504": { $ref: "#/components/responses/GatewayTimeout" }
+  /v1/privacy/exclusions/{kind}/{value}:
+    delete:
+      operationId: removeExclusion
+      summary: Stop excluding a domain, client or matter
+      description: |
+        Routed to capture. Requires `settings:manage`. The gateway forwards only a known kind and a
+        URL-safe value; anything else is a 400 without reaching capture. Same response as
+        `capture.v1.yaml` `removeExclusion`.
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { type: string, enum: [domain, client, matter] }
+        - name: value
+          in: path
+          required: true
+          description: The value as configured; domains ignore case and a trailing dot.
+          schema: { type: string, minLength: 1, maxLength: 320 }
+      responses:
+        "204":
+          description: Removed.
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "504": { $ref: "#/components/responses/GatewayTimeout" }

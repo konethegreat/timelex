@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::Row;
 use time::{Duration, OffsetDateTime};
 use timelex_capture_service::{
-    Actor, CaptureStore, Clock, IngestOutcome, PageOutcome, StoreError, MIGRATIONS,
+    Actor, CaptureStore, Clock, ExclusionKind, IngestOutcome, PageOutcome, StoreError, MIGRATIONS,
 };
 use timelex_db::testing::{setup as setup_db, ServiceUnderTest, TestDb};
 use timelex_db::TenantPool;
@@ -83,6 +83,10 @@ fn writer(tenant: TenantId, user: UserId) -> Actor {
     actor(tenant, user, &[Permission::CaptureWrite])
 }
 
+fn privacy_admin(tenant: TenantId, user: UserId) -> Actor {
+    actor(tenant, user, &[Permission::SettingsManage])
+}
+
 fn event(tenant: TenantId, user: UserId, source_id: &str, started: OffsetDateTime) -> ActivityEvent {
     let mut event = ActivityEvent {
         schema_version: types::ACTIVITY_EVENT_SCHEMA_VERSION.to_owned(),
@@ -106,6 +110,27 @@ fn event(tenant: TenantId, user: UserId, source_id: &str, started: OffsetDateTim
             redaction_applied: false,
         },
     };
+    event.id = event.expected_id();
+    event
+}
+
+fn event_with_domain(
+    tenant: TenantId,
+    user: UserId,
+    source_id: &str,
+    started: OffsetDateTime,
+    domain: &str,
+) -> ActivityEvent {
+    let mut event = event(tenant, user, source_id, started);
+    event.kind = types::ActivityKind::EmailReceived;
+    event.subject = Some(types::Subject {
+        participants: vec![types::Participant {
+            role: types::ParticipantRole::From,
+            domain: domain.to_owned(),
+            address: None,
+        }],
+        ..Default::default()
+    });
     event.id = event.expected_id();
     event
 }
@@ -355,7 +380,8 @@ async fn a_page_stores_every_event_and_moves_the_cursor() {
         outcome,
         PageOutcome {
             created: 2,
-            existing: 0
+            existing: 0,
+            excluded: 0
         }
     );
     assert_eq!(
@@ -373,7 +399,8 @@ async fn a_page_stores_every_event_and_moves_the_cursor() {
         again,
         PageOutcome {
             created: 0,
-            existing: 2
+            existing: 2,
+            excluded: 0
         }
     );
     assert_eq!(
@@ -473,6 +500,318 @@ async fn a_bad_connector_name_or_cursor_is_rejected() {
         .await
         .unwrap_err();
     assert!(matches!(error, StoreError::Invalid(_)));
+}
+
+async fn count_outbox(db: &TestDb, tenant: TenantId) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM platform.outbox WHERE tenant_id = $1")
+        .bind(tenant.as_uuid())
+        .fetch_one(&db.admin)
+        .await
+        .unwrap()
+}
+
+async fn count_exclusions(tenants: &TenantPool, tenant: TenantId) -> i64 {
+    let mut tx = tenants.begin(tenant).await.unwrap();
+    let count = sqlx::query_scalar("SELECT count(*) FROM capture.exclusions")
+        .fetch_one(tx.conn())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    count
+}
+
+#[tokio::test]
+async fn an_excluded_domain_is_never_stored_and_nothing_is_published() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let (exclusion, created) = env
+        .store
+        .add_exclusion(
+            privacy_admin(tenant, user),
+            ExclusionKind::Domain,
+            " Example.COM. ",
+            Some(" client asked "),
+        )
+        .await
+        .unwrap();
+    assert!(created);
+    assert_eq!(exclusion.value, "example.com");
+    assert_eq!(exclusion.reason.as_deref(), Some("client asked"));
+
+    let signal = event_with_domain(
+        tenant,
+        user,
+        "synthetic-message-a",
+        env.clock.now(),
+        "mail.example.com",
+    );
+    let outcome = env.store.ingest(writer(tenant, user), signal).await.unwrap();
+    assert_eq!(outcome.outcome, IngestOutcome::Excluded);
+    assert_eq!(count_events(&env.tenants, tenant).await, 0);
+    assert_eq!(count_outbox(&env.db, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_page_skips_excluded_events_and_still_moves_the_cursor() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let at = env.clock.now();
+    env.store
+        .add_exclusion(
+            privacy_admin(tenant, user),
+            ExclusionKind::Domain,
+            "example.com",
+            None,
+        )
+        .await
+        .unwrap();
+
+    let page = [
+        event_with_domain(tenant, user, "synthetic-message-a", at, "mail.example.com"),
+        event(tenant, user, "synthetic-message-b", at),
+    ];
+    let outcome = env
+        .store
+        .record_page(tenant, "m365_mail", &page, Some("page-2"))
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        PageOutcome {
+            created: 1,
+            existing: 0,
+            excluded: 1
+        }
+    );
+    assert_eq!(count_events(&env.tenants, tenant).await, 1);
+    assert_eq!(count_outbox(&env.db, tenant).await, 1);
+    assert_eq!(
+        env.store.cursor(tenant, "m365_mail").await.unwrap(),
+        Some("page-2".into()),
+        "one excluded signal must not stall the connector"
+    );
+}
+
+#[tokio::test]
+async fn exclusions_are_per_firm() {
+    let Some(env) = env().await else { return };
+    let tenant_a = tenant();
+    let tenant_b = tenant();
+    let user = user();
+    let at = env.clock.now();
+    env.store
+        .add_exclusion(
+            privacy_admin(tenant_a, user),
+            ExclusionKind::Domain,
+            "example.com",
+            None,
+        )
+        .await
+        .unwrap();
+
+    let signal = event_with_domain(tenant_b, user, "synthetic-message-b", at, "mail.example.com");
+    let outcome = env.store.ingest(writer(tenant_b, user), signal).await.unwrap();
+    assert_eq!(
+        outcome.outcome,
+        IngestOutcome::Created,
+        "another firm's exclusion does not apply"
+    );
+    assert_eq!(count_events(&env.tenants, tenant_b).await, 1);
+    assert!(env
+        .store
+        .list_exclusions(privacy_admin(tenant_b, user))
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn managing_exclusions_needs_settings_manage() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+
+    let add = env
+        .store
+        .add_exclusion(writer(tenant, user), ExclusionKind::Domain, "example.com", None)
+        .await
+        .unwrap_err();
+    assert!(matches!(add, StoreError::Forbidden));
+    let list = env.store.list_exclusions(writer(tenant, user)).await.unwrap_err();
+    assert!(matches!(list, StoreError::Forbidden));
+    let remove = env
+        .store
+        .remove_exclusion(writer(tenant, user), ExclusionKind::Domain, "example.com")
+        .await
+        .unwrap_err();
+    assert!(matches!(remove, StoreError::Forbidden));
+    assert_eq!(count_exclusions(&env.tenants, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn adding_an_exclusion_twice_keeps_one_row_and_the_first_reason() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let admin = privacy_admin(tenant, user);
+
+    let (_, first) = env
+        .store
+        .add_exclusion(admin.clone(), ExclusionKind::Domain, "example.com", Some("first"))
+        .await
+        .unwrap();
+    let (exclusion, second) = env
+        .store
+        .add_exclusion(admin, ExclusionKind::Domain, "EXAMPLE.COM", Some("second"))
+        .await
+        .unwrap();
+    assert!(first);
+    assert!(!second, "a repeat changes nothing");
+    assert_eq!(exclusion.reason.as_deref(), Some("first"));
+    assert_eq!(count_exclusions(&env.tenants, tenant).await, 1);
+
+    let listed = env
+        .store
+        .list_exclusions(privacy_admin(tenant, user))
+        .await
+        .unwrap();
+    assert_eq!(listed, vec![exclusion]);
+}
+
+#[tokio::test]
+async fn removing_an_exclusion_stops_filtering() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let admin = privacy_admin(tenant, user);
+    env.store
+        .add_exclusion(admin.clone(), ExclusionKind::Domain, "example.com", None)
+        .await
+        .unwrap();
+
+    assert!(env
+        .store
+        .remove_exclusion(admin.clone(), ExclusionKind::Domain, " Example.com ")
+        .await
+        .unwrap());
+    assert!(!env
+        .store
+        .remove_exclusion(admin, ExclusionKind::Domain, "example.com")
+        .await
+        .unwrap());
+    assert_eq!(count_exclusions(&env.tenants, tenant).await, 0);
+
+    let signal = event_with_domain(
+        tenant,
+        user,
+        "synthetic-message-a",
+        env.clock.now(),
+        "mail.example.com",
+    );
+    let outcome = env.store.ingest(writer(tenant, user), signal).await.unwrap();
+    assert_eq!(outcome.outcome, IngestOutcome::Created);
+}
+
+#[tokio::test]
+async fn a_client_exclusion_is_recorded_but_does_not_filter_capture_yet() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let (exclusion, created) = env
+        .store
+        .add_exclusion(
+            privacy_admin(tenant, user),
+            ExclusionKind::Client,
+            "CL-2026-0042",
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(created);
+    assert_eq!(exclusion.kind, ExclusionKind::Client);
+
+    // A raw signal names no client, so client exclusions take effect at attribution (P3).
+    let signal = event_with_domain(
+        tenant,
+        user,
+        "synthetic-message-a",
+        env.clock.now(),
+        "example.com",
+    );
+    let outcome = env.store.ingest(writer(tenant, user), signal).await.unwrap();
+    assert_eq!(outcome.outcome, IngestOutcome::Created);
+}
+
+#[tokio::test]
+async fn an_invalid_exclusion_is_rejected_and_writes_nothing() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let admin = privacy_admin(tenant, user);
+
+    assert!(matches!(
+        ExclusionKind::parse("phone"),
+        Err(StoreError::Invalid(_))
+    ));
+    let domain = env
+        .store
+        .add_exclusion(admin.clone(), ExclusionKind::Domain, "not a domain", None)
+        .await
+        .unwrap_err();
+    assert!(matches!(domain, StoreError::Invalid(_)));
+    let reason = env
+        .store
+        .add_exclusion(
+            admin,
+            ExclusionKind::Domain,
+            "example.com",
+            Some(&"x".repeat(501)),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(reason, StoreError::Invalid(_)));
+    assert_eq!(count_exclusions(&env.tenants, tenant).await, 0);
+}
+
+#[tokio::test]
+async fn content_is_stored_only_when_it_was_captured_and_redacted() {
+    let Some(env) = env().await else { return };
+    let tenant = tenant();
+    let user = user();
+    let at = env.clock.now();
+
+    let mut unredacted = event(tenant, user, "synthetic-message-a", at);
+    unredacted.privacy.content_captured = true;
+    unredacted.content_ref = Some("s3://content/raw".into());
+    let error = env
+        .store
+        .ingest(writer(tenant, user), unredacted)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, StoreError::Invalid(_)));
+
+    let mut orphan = event(tenant, user, "synthetic-message-b", at);
+    orphan.privacy.content_captured = false;
+    orphan.content_ref = Some("s3://content/raw".into());
+    let error = env.store.ingest(writer(tenant, user), orphan).await.unwrap_err();
+    assert!(matches!(error, StoreError::Invalid(_)));
+
+    let mut missing = event(tenant, user, "synthetic-message-c", at);
+    missing.privacy.content_captured = true;
+    missing.privacy.redaction_applied = true;
+    let error = env.store.ingest(writer(tenant, user), missing).await.unwrap_err();
+    assert!(matches!(error, StoreError::Invalid(_)));
+    assert_eq!(count_events(&env.tenants, tenant).await, 0);
+
+    let mut redacted = event(tenant, user, "synthetic-message-d", at);
+    redacted.privacy.content_captured = true;
+    redacted.privacy.redaction_applied = true;
+    redacted.content_ref = Some("s3://content/redacted".into());
+    let outcome = env.store.ingest(writer(tenant, user), redacted).await.unwrap();
+    assert_eq!(outcome.outcome, IngestOutcome::Created);
+    assert_eq!(count_events(&env.tenants, tenant).await, 1);
 }
 
 #[tokio::test]

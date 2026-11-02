@@ -4,10 +4,10 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | ✅ framework (P2-02) and manual quick capture (P2-08); connectors arrive with P2-03/P2-05 |
+| **Status** | ✅ framework (P2-02), manual quick capture (P2-08) and privacy exclusions (P2-07); real connectors arrive with P2-03/P2-05 and the redaction worker is still pending |
 | **Language** | Rust |
 | **Phase** | 2 |
-| **Owns data** | `capture` schema: activity events, connector cursors |
+| **Owns data** | `capture` schema: activity events, connector cursors, privacy exclusions |
 
 ## Purpose
 Turn raw signals from Microsoft 365, Google and the desktop agent into normalised, idempotent activity events.
@@ -19,16 +19,19 @@ Turn raw signals from Microsoft 365, Google and the desktop agent into normalise
 - **Connectors.** `Connector::fetch(cursor, limit)` returns one page of events and an opaque `next` cursor, or an error classified as retryable or permanent. `Runner::run_once` drains every connector of a firm from its stored cursor; a page and its new cursor commit in one transaction, so a failed page stores nothing and the old cursor stands.
 - **Replay.** `Runner::replay` reads a connector from the beginning through the same idempotent path and does not touch the stored cursor. Re-running after a fix fills gaps without duplicating an event or disturbing the live schedule.
 - **Manual quick capture.** `POST /v1/entries` turns a hand-recorded call, meeting or note into the same canonical activity event ([ADR-0022](../../docs/adr/0022-manual-quick-capture.md)). The client sends `{entryId, kind, startedAt, endedAt, description}`; the server derives the source (`manual`), the source id (the `entryId` UUID) and the event id, collapses the description into `subject.title` (at most 500 characters) and records metadata only. The `entryId` is the idempotency key, so a retried submit answers 200 with the same event. The gateway exposes it publicly at `POST /v1/capture/entries` and serves the mobile page at `/capture`.
-- **Tenancy.** Every query runs in a `TenantTx` under `svc_capture`'s row-level security. The ingest and entry routes need a principal token with `capture:write`; the event's firm and actor must be the caller's.
+- **Privacy exclusions.** A firm can exclude a `domain`, `client` or `matter`. Domain is enforced at capture: inside the tenant write transaction, before the insert, an event whose participant is at an excluded domain is dropped, so it is never stored and no `activity.recorded` is published ([ADR-0023](../../docs/adr/0023-privacy-exclusions.md)). Matching is case-insensitive, ignores a trailing dot and covers subdomains. A connector page still commits its cursor and reports the event as `excluded`, so one rule cannot stall capture. A single excluded ingest answers `200` with `created: false`, indistinguishable from a duplicate. Client and matter values are recorded now and enforced when attribution exists (Phase 3).
+- **Metadata-only gate.** An event may carry a `contentRef` only when `contentCaptured` and `redactionApplied` are both true, and the reference is 1 to 512 characters. Every other combination is refused before storage. The P0-08 redaction module exists; its worker queue and container are pending.
+- **Managing exclusions.** `GET`/`POST /v1/exclusions` and `DELETE /v1/exclusions/{kind}/{value}` need `settings:manage`. Adding is idempotent and keeps the first reason; removing is `404` when absent. The gateway exposes `GET`/`POST /v1/privacy/exclusions` and `DELETE /v1/privacy/exclusions/{kind}/{value}`.
+- **Tenancy.** Every query runs in a `TenantTx` under `svc_capture`'s row-level security. The ingest and entry routes need a principal token with `capture:write`; the event's firm and actor must be the caller's. Exclusion management needs `settings:manage`.
 
 ## Contract
-- **REST:** [`capture.v1.yaml`](../../contracts/openapi/capture.v1.yaml) (0.2.0): `POST /v1/events` (private), `POST /v1/entries` (private; the gateway's public path is `/v1/capture/entries`), `/health`.
+- **REST:** [`capture.v1.yaml`](../../contracts/openapi/capture.v1.yaml) (0.3.0): `POST /v1/events` (private), `POST /v1/entries` (private; the gateway's public path is `/v1/capture/entries`), `GET`/`POST /v1/exclusions` and `DELETE /v1/exclusions/{kind}/{value}` (private; public under `/v1/privacy/exclusions`), `/health`.
 - **Events published:** `activity.recorded` (schema: [activity-event](../../contracts/events/activity-event.schema.json))
 - **Events consumed:** `secret.rotated`, `secret.revoked` (not yet; P2-03)
 
 ## Not yet
 - Real Microsoft Graph and Google connectors, subscriptions and renewal (P2-03, P2-04, P2-05)
-- Privacy filter, exclusions and redaction (P2-07); backfill as MCP tasks (P2-11)
+- The redaction worker queue and container (the P0-08 module and tests exist); client and matter enforcement (Phase 3); backfill as MCP tasks (P2-11)
 - No attribution decisions, no model calls except through `mcp-host`, no storage of unredacted content beyond the configured retention
 
 ## Run
@@ -58,4 +61,4 @@ The database tests need `TIMELEX_TEST_DATABASE_URL` (a superuser URL that can cr
 TIMELEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/postgres cargo test -p timelex-capture-service
 ```
 
-See also: [ARCHITECTURE.md](../../docs/ARCHITECTURE.md), [ADR-0021](../../docs/adr/0021-idempotent-capture-and-replay.md), [ADR-0022](../../docs/adr/0022-manual-quick-capture.md), [ADR-0001](../../docs/adr/0001-service-boundaries-and-contract-first.md).
+See also: [ARCHITECTURE.md](../../docs/ARCHITECTURE.md), [ADR-0021](../../docs/adr/0021-idempotent-capture-and-replay.md), [ADR-0022](../../docs/adr/0022-manual-quick-capture.md), [ADR-0023](../../docs/adr/0023-privacy-exclusions.md), [ADR-0001](../../docs/adr/0001-service-boundaries-and-contract-first.md).

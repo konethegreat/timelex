@@ -107,6 +107,43 @@ fn event_for(env: &Env, tenant: TenantId, user: UserId, source_id: &str) -> Acti
     event
 }
 
+fn event_from_domain(
+    env: &Env,
+    tenant: TenantId,
+    user: UserId,
+    source_id: &str,
+    domain: &str,
+) -> ActivityEvent {
+    let mut event = event_for(env, tenant, user, source_id);
+    event.source.system = types::SourceSystem::M365Mail;
+    event.kind = types::ActivityKind::EmailReceived;
+    event.subject = Some(types::Subject {
+        participants: vec![types::Participant {
+            role: types::ParticipantRole::From,
+            domain: domain.to_owned(),
+            address: None,
+        }],
+        ..Default::default()
+    });
+    event.id = event.expected_id();
+    event
+}
+
+fn exclusion_request(method: &str, uri: &str, token: &str, body: Option<&str>) -> Request<Body> {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    let body = match body {
+        Some(body) => {
+            request = request.header(header::CONTENT_TYPE, "application/json");
+            Body::from(body.to_owned())
+        }
+        None => Body::empty(),
+    };
+    request.body(body).unwrap()
+}
+
 fn post(body: &ActivityEvent, token: &str) -> Request<Body> {
     Request::builder()
         .method("POST")
@@ -229,6 +266,148 @@ async fn another_users_event_is_rejected() {
     let (status, body) = send(env.app.clone(), post(&event, &token)).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(count_events(&env.db, env.tenant).await, 0);
+}
+
+#[tokio::test]
+async fn a_firm_can_add_list_and_remove_an_exclusion() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::SettingsManage])),
+    );
+
+    let body = r#"{"kind":"domain","value":" Example.COM. ","reason":" client asked "}"#;
+    let (status, added) = send(
+        env.app.clone(),
+        exclusion_request("POST", "/v1/exclusions", &token, Some(body)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["kind"], "domain");
+    assert_eq!(added["value"], "example.com");
+    assert_eq!(added["created"], true);
+
+    let (status, again) = send(
+        env.app.clone(),
+        exclusion_request("POST", "/v1/exclusions", &token, Some(body)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again["created"], false, "a repeat changes nothing");
+
+    let (status, listed) = send(
+        env.app.clone(),
+        exclusion_request("GET", "/v1/exclusions", &token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let exclusions = listed["exclusions"].as_array().unwrap();
+    assert_eq!(exclusions.len(), 1);
+    assert_eq!(exclusions[0]["value"], "example.com");
+    assert_eq!(exclusions[0]["reason"], "client asked");
+    assert!(exclusions[0]["createdAt"].is_string());
+
+    let (status, _) = send(
+        env.app.clone(),
+        exclusion_request("DELETE", "/v1/exclusions/domain/EXAMPLE.com", &token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(
+        env.app.clone(),
+        exclusion_request("DELETE", "/v1/exclusions/domain/example.com", &token, None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "there is nothing left to remove");
+
+    let (_, listed) = send(
+        env.app.clone(),
+        exclusion_request("GET", "/v1/exclusions", &token, None),
+    )
+    .await;
+    assert_eq!(listed["exclusions"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn an_excluded_domain_is_not_stored_even_through_ingest() {
+    let Some(env) = env().await else { return };
+    let admin = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::SettingsManage])),
+    );
+    let writer = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    let body = r#"{"kind":"domain","value":"example.com"}"#;
+    let (status, _) = send(
+        env.app.clone(),
+        exclusion_request("POST", "/v1/exclusions", &admin, Some(body)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let event = event_from_domain(
+        &env,
+        env.tenant,
+        env.user,
+        "synthetic-message-a",
+        "mail.example.com",
+    );
+    let (status, answer) = send(env.app.clone(), post(&event, &writer)).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(answer["id"], event.id);
+    assert_eq!(answer["created"], false);
+    assert_eq!(count_events(&env.db, env.tenant).await, 0);
+}
+
+#[tokio::test]
+async fn managing_exclusions_needs_settings_manage() {
+    let Some(env) = env().await else { return };
+    let writer = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::CaptureWrite])),
+    );
+    for (method, uri, body) in [
+        (
+            "POST",
+            "/v1/exclusions",
+            Some(r#"{"kind":"domain","value":"example.com"}"#),
+        ),
+        ("GET", "/v1/exclusions", None),
+        ("DELETE", "/v1/exclusions/domain/example.com", None),
+    ] {
+        let (status, answer) = send(env.app.clone(), exclusion_request(method, uri, &writer, body)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {answer}");
+    }
+}
+
+#[tokio::test]
+async fn an_invalid_exclusion_is_400_and_writes_nothing() {
+    let Some(env) = env().await else { return };
+    let token = token_for(
+        &env,
+        &Caller::Principal(principal(&env, &[Permission::SettingsManage])),
+    );
+    for body in [
+        r#"{"kind":"phone","value":"example.com"}"#,
+        r#"{"kind":"domain","value":"not a domain"}"#,
+        r#"{"kind":"domain","value":"example.com","reason":"bad\u0001"}"#,
+        r#"{"kind":"domain","value":"example.com","extra":true}"#,
+    ] {
+        let (status, answer) = send(
+            env.app.clone(),
+            exclusion_request("POST", "/v1/exclusions", &token, Some(body)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}: {answer}");
+    }
+    let (_, listed) = send(
+        env.app.clone(),
+        exclusion_request("GET", "/v1/exclusions", &token, None),
+    )
+    .await;
+    assert_eq!(listed["exclusions"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]

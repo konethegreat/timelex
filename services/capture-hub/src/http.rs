@@ -13,12 +13,12 @@
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{DefaultBodyLimit, FromRequest, FromRequestParts, Request, State};
+use axum::extract::{DefaultBodyLimit, FromRequest, FromRequestParts, Path, Request, State};
 use axum::http::{header, request::Parts, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
 use timelex_auth::{Caller, Principal, Verifier};
@@ -26,6 +26,7 @@ use timelex_types::{supports_activity_schema_version, ActivityEvent};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::exclusions::{Exclusion, ExclusionKind};
 use crate::manual::{self, Entry};
 use crate::store::{Actor, CaptureStore, Clock, IngestOutcome};
 
@@ -51,6 +52,8 @@ pub fn router_with_clock(store: CaptureStore, verifier: Verifier, clock: Clock) 
         .route("/health", get(health))
         .route("/v1/events", post(ingest_event))
         .route("/v1/entries", post(capture_entry))
+        .route("/v1/exclusions", get(list_exclusions).post(add_exclusion))
+        .route("/v1/exclusions/{kind}/{value}", delete(remove_exclusion))
         .fallback(|| async { ApiError::NotFound })
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(AppState {
@@ -199,6 +202,28 @@ struct IngestJson {
     created: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NewExclusion {
+    kind: String,
+    value: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ExclusionsJson {
+    exclusions: Vec<Exclusion>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExclusionJson {
+    kind: ExclusionKind,
+    value: String,
+    created: bool,
+}
+
 // ---------- handlers ----------
 
 async fn health(State(state): State<AppState>) -> Response {
@@ -244,13 +269,65 @@ async fn capture_entry(
     store_and_reply(&state, Actor::from(&caller.0), event).await
 }
 
+/// `GET /v1/exclusions`: the firm's privacy exclusions.
+async fn list_exclusions(State(state): State<AppState>, caller: Verified) -> Result<Response, ApiError> {
+    let exclusions = state.store.list_exclusions(Actor::from(&caller.0)).await?;
+    Ok(reply(StatusCode::OK, Json(ExclusionsJson { exclusions })))
+}
+
+/// `POST /v1/exclusions`: configure one exclusion. A repeat is 200 with `created: false`.
+async fn add_exclusion(
+    State(state): State<AppState>,
+    caller: Verified,
+    Body(new): Body<NewExclusion>,
+) -> Result<Response, ApiError> {
+    let kind = ExclusionKind::parse(&new.kind)?;
+    let (exclusion, created) = state
+        .store
+        .add_exclusion(Actor::from(&caller.0), kind, &new.value, new.reason.as_deref())
+        .await?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok(reply(
+        status,
+        Json(ExclusionJson {
+            kind: exclusion.kind,
+            value: exclusion.value,
+            created,
+        }),
+    ))
+}
+
+/// `DELETE /v1/exclusions/{kind}/{value}`: stop excluding. 204 when removed, 404 when absent.
+async fn remove_exclusion(
+    State(state): State<AppState>,
+    caller: Verified,
+    Path((kind, value)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let kind = ExclusionKind::parse(&kind)?;
+    if state
+        .store
+        .remove_exclusion(Actor::from(&caller.0), kind, &value)
+        .await?
+    {
+        Ok(reply(StatusCode::NO_CONTENT, ()))
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 /// Store one event for a user and answer with what the store decided. The first delivery is 201;
 /// a duplicate is 200 with `created: false`.
 async fn store_and_reply(state: &AppState, actor: Actor, event: ActivityEvent) -> Result<Response, ApiError> {
     let outcome = state.store.ingest(actor, event).await?;
     let status = match outcome.outcome {
         IngestOutcome::Created => StatusCode::CREATED,
-        IngestOutcome::Existing => StatusCode::OK,
+        // A duplicate and a signal the firm excludes both store nothing; the caller may retry
+        // either, because an excluded signal is not a duplicate and its answer stays honest.
+        IngestOutcome::Existing | IngestOutcome::Excluded => StatusCode::OK,
     };
     Ok(reply(
         status,

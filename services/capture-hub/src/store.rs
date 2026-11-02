@@ -22,6 +22,7 @@ use timelex_outbox::EventId;
 use timelex_types::{supports_activity_schema_version, ActivityEvent};
 
 use crate::error::StoreError;
+use crate::exclusions::{self, Exclusion, ExclusionKind};
 
 /// A source of "now". Injected so tests can move time.
 pub type Clock = Arc<dyn Fn() -> OffsetDateTime + Send + Sync>;
@@ -51,11 +52,13 @@ impl From<&Principal> for Actor {
     }
 }
 
-/// Whether an ingest stored a new event or found the one already there.
+/// Whether an ingest stored a new event, found the one already there, or dropped the signal because
+/// the firm excludes its domain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IngestOutcome {
     Created,
     Existing,
+    Excluded,
 }
 
 /// The result of one ingest. `id` is the event's canonical id, which a duplicate delivery also gets.
@@ -70,6 +73,8 @@ pub struct Ingested {
 pub struct PageOutcome {
     pub created: usize,
     pub existing: usize,
+    /// Signals the firm excludes. They are not stored, but the page still commits its cursor.
+    pub excluded: usize,
 }
 
 /// The capture store.
@@ -107,6 +112,13 @@ impl CaptureStore {
     pub async fn record(&self, tenant: TenantId, event: ActivityEvent) -> Result<Ingested, StoreError> {
         validate(tenant, &event)?;
         let mut tx = self.pool.begin(tenant).await?;
+        if exclusions::is_excluded(&event, &load_excluded_domains(&mut tx).await?) {
+            tx.commit().await?;
+            return Ok(Ingested {
+                id: event.id,
+                outcome: IngestOutcome::Excluded,
+            });
+        }
         let created = insert_event(&mut tx, &event, (self.clock)()).await?;
         tx.commit().await?;
         Ok(Ingested {
@@ -138,8 +150,14 @@ impl CaptureStore {
         }
         let at = (self.clock)();
         let mut tx = self.pool.begin(tenant).await?;
+        let excluded_domains = load_excluded_domains(&mut tx).await?;
         let mut created = 0;
+        let mut excluded = 0;
         for event in events {
+            if exclusions::is_excluded(event, &excluded_domains) {
+                excluded += 1;
+                continue;
+            }
             if insert_event(&mut tx, event, at).await? {
                 created += 1;
             }
@@ -150,8 +168,112 @@ impl CaptureStore {
         tx.commit().await?;
         Ok(PageOutcome {
             created,
-            existing: events.len() - created,
+            existing: events.len() - created - excluded,
+            excluded,
         })
+    }
+
+    /// Configure an exclusion for the caller's firm. Needs `settings:manage`; a repeat returns the
+    /// stored exclusion with `false` and changes nothing, so the first reason stands.
+    pub async fn add_exclusion(
+        &self,
+        actor: Actor,
+        kind: ExclusionKind,
+        value: &str,
+        reason: Option<&str>,
+    ) -> Result<(Exclusion, bool), StoreError> {
+        require_permission(&actor.permissions, Permission::SettingsManage)
+            .map_err(|_| StoreError::Forbidden)?;
+        let value = exclusions::normalize_value(kind, value)?;
+        let mut reason = exclusions::normalize_reason(reason)?;
+        let at = (self.clock)();
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        let inserted: Option<OffsetDateTime> = sqlx::query_scalar(
+            "INSERT INTO capture.exclusions \
+             (tenant_id, kind, value, reason, created_by, created_at) \
+             VALUES ($1, $2, $3, $4, $5, $6) \
+             ON CONFLICT (tenant_id, kind, value) DO NOTHING \
+             RETURNING created_at",
+        )
+        .bind(actor.tenant.as_uuid())
+        .bind(kind.as_str())
+        .bind(&value)
+        .bind(&reason)
+        .bind(format!("us_{}", actor.user.as_uuid().simple()))
+        .bind(at)
+        .fetch_optional(tx.conn())
+        .await?;
+        let created_at = match inserted {
+            Some(at) => at,
+            None => {
+                let stored: (Option<String>, OffsetDateTime) = sqlx::query_as(
+                    "SELECT reason, created_at FROM capture.exclusions \
+                     WHERE kind = $1 AND value = $2",
+                )
+                .bind(kind.as_str())
+                .bind(&value)
+                .fetch_one(tx.conn())
+                .await?;
+                reason = stored.0;
+                stored.1
+            }
+        };
+        tx.commit().await?;
+        Ok((
+            Exclusion {
+                kind,
+                value,
+                reason,
+                created_at,
+            },
+            inserted.is_some(),
+        ))
+    }
+
+    /// Every exclusion configured for the caller's firm. Needs `settings:manage`.
+    pub async fn list_exclusions(&self, actor: Actor) -> Result<Vec<Exclusion>, StoreError> {
+        require_permission(&actor.permissions, Permission::SettingsManage)
+            .map_err(|_| StoreError::Forbidden)?;
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        let rows: Vec<(String, String, Option<String>, OffsetDateTime)> = sqlx::query_as(
+            "SELECT kind, value, reason, created_at FROM capture.exclusions \
+             ORDER BY kind, value",
+        )
+        .fetch_all(tx.conn())
+        .await?;
+        tx.commit().await?;
+        rows.into_iter()
+            .map(|(kind, value, reason, created_at)| {
+                Ok(Exclusion {
+                    kind: ExclusionKind::parse(&kind).map_err(|_| {
+                        StoreError::Internal(format!("stored exclusion kind {kind:?} is unknown"))
+                    })?,
+                    value,
+                    reason,
+                    created_at,
+                })
+            })
+            .collect()
+    }
+
+    /// Remove an exclusion. Needs `settings:manage`; `false` means the firm had none.
+    pub async fn remove_exclusion(
+        &self,
+        actor: Actor,
+        kind: ExclusionKind,
+        value: &str,
+    ) -> Result<bool, StoreError> {
+        require_permission(&actor.permissions, Permission::SettingsManage)
+            .map_err(|_| StoreError::Forbidden)?;
+        let value = exclusions::normalize_value(kind, value)?;
+        let mut tx = self.pool.begin(actor.tenant).await?;
+        let removed = sqlx::query("DELETE FROM capture.exclusions WHERE kind = $1 AND value = $2")
+            .bind(kind.as_str())
+            .bind(&value)
+            .execute(tx.conn())
+            .await?;
+        tx.commit().await?;
+        Ok(removed.rows_affected() > 0)
     }
 
     /// The stored cursor for a connector, or `None` if it has never completed a page.
@@ -194,7 +316,45 @@ fn validate(tenant: TenantId, event: &ActivityEvent) -> Result<(), StoreError> {
             "actor.userId must be us_ followed by 8 to 64 letters or digits",
         ));
     }
+    match (
+        event.privacy.content_captured,
+        event.privacy.redaction_applied,
+        event.content_ref.as_deref(),
+    ) {
+        (false, false, None) => {}
+        (true, true, Some(reference)) if (1..=512).contains(&reference.chars().count()) => {}
+        (true, true, Some(_)) => {
+            return Err(StoreError::Invalid("contentRef must be 1 to 512 characters"));
+        }
+        (false, false, Some(_)) => {
+            return Err(StoreError::Invalid(
+                "contentRef is present but the event captured no content",
+            ));
+        }
+        (false, true, _) => {
+            return Err(StoreError::Invalid(
+                "redactionApplied is true but the event captured no content",
+            ));
+        }
+        (true, false, _) => {
+            return Err(StoreError::Invalid("content is stored only after redaction"));
+        }
+        (true, true, None) => {
+            return Err(StoreError::Invalid(
+                "contentCaptured is true but contentRef is missing",
+            ));
+        }
+    }
     Ok(())
+}
+
+/// The firm's excluded domains, read inside the caller's tenant transaction.
+async fn load_excluded_domains(tx: &mut TenantTx) -> Result<Vec<String>, StoreError> {
+    Ok(
+        sqlx::query_scalar("SELECT value FROM capture.exclusions WHERE kind = 'domain'")
+            .fetch_all(tx.conn())
+            .await?,
+    )
 }
 
 fn validate_connector(connector: &str) -> Result<(), StoreError> {

@@ -17,12 +17,14 @@
 
 mod connector;
 mod error;
+pub mod exclusions;
 pub mod http;
 pub mod manual;
 mod store;
 
 pub use connector::{Connector, ConnectorError, Page, RunReport, Runner, RunnerError};
 pub use error::StoreError;
+pub use exclusions::{Exclusion, ExclusionKind};
 pub use store::{Actor, CaptureStore, Clock, IngestOutcome, Ingested, PageOutcome};
 
 /// The capture schema's migrations, embedded at build time. Run them as `timelex_migrator` with
