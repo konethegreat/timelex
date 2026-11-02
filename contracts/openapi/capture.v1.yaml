@@ -1,10 +1,11 @@
 # Written by Kone Tshivhinda & Claude
-# Capture service contract v1 (draft 0.2.0). Contract-first: this file leads the code (ADR-0001).
-# Design: ADR-0021 (idempotent ingest, connector cursors, replay), ADR-0022 (manual quick capture).
+# Capture service contract v1 (draft 0.3.0). Contract-first: this file leads the code (ADR-0001).
+# Design: ADR-0021 (idempotent ingest, connector cursors, replay), ADR-0022 (manual quick capture),
+# ADR-0023 (privacy exclusions and the metadata-only gate).
 openapi: 3.1.0
 info:
   title: TimeLex Capture
-  version: 0.2.0
+  version: 0.3.0
   summary: Idempotent ingest of activity events from connectors, the desktop agent and manual capture (pre-alpha).
   description: |
     Pre-alpha. The capture hub normalises a raw work signal into one immutable activity event
@@ -13,6 +14,14 @@ info:
     connectors arrive with P2-03 and P2-05. Since 0.2.0 a person can also record work by hand:
     `POST /v1/entries` derives the event from a short form (ADR-0022) and the gateway exposes it at
     `POST /v1/capture/entries`.
+
+    **Privacy exclusions.** Since 0.3.0 a firm can exclude a `domain`, a `client` or a `matter`
+    (ADR-0023). A domain is enforced before storage: an event with a participant at the excluded
+    domain is not stored and publishes nothing, and a connector page still advances its cursor past
+    it. Client and matter exclusions are configuration for attribution (P3); a raw signal names
+    neither. Managing exclusions needs `settings:manage`. Content is metadata-only by default: an
+    event may name a `contentRef` only when it captured content, and captured content is stored only
+    after redaction.
 
     **Why a caller can post the same event twice.** Every event carries a canonical `id` derived from
     the firm, the source system, the source id and the start instant ([the id rule](../events/README.md)).
@@ -46,6 +55,8 @@ tags:
     description: Record an activity event exactly once.
   - name: entries
     description: Record work by hand when no connector saw it.
+  - name: exclusions
+    description: Configure what capture must never store (ADR-0023).
 paths:
   /health:
     get:
@@ -84,6 +95,11 @@ paths:
         `source.sourceId` and `startedAt` (whole seconds); anything else is a 400. The event body must
         satisfy [`activity-event.schema.json`](../events/activity-event.schema.json) for a supported
         major; unknown optional properties are ignored (P2-01).
+
+        An event whose participant is at a domain the firm excludes is **not stored** and publishes
+        nothing. It answers 200 with `created: false`, exactly like a duplicate, so a sender may
+        retry without learning which privacy rule applied. A `contentRef` without captured content,
+        or captured content that was not redacted, is a 400 (metadata-only default).
       security: [{ internalToken: [] }]
       x-required-kind: principal
       x-required-permission: capture:write
@@ -163,6 +179,110 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/exclusions:
+    get:
+      tags: [exclusions]
+      operationId: listExclusions
+      summary: List the firm's privacy exclusions
+      description: |
+        Every exclusion the firm configured, ordered by kind and value. Domain values are stored
+        lower-case with no trailing dot; client and matter identifiers keep their case. Requires
+        `settings:manage` (ADR-0023).
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      responses:
+        "200":
+          description: The firm's exclusions.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExclusionList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/Internal" }
+    post:
+      tags: [exclusions]
+      operationId: addExclusion
+      summary: Configure a privacy exclusion (idempotent)
+      description: |
+        Values are canonicalised: a domain is trimmed, lower-cased and loses one leading `@` and one
+        trailing dot; a client or matter identifier is trimmed. A domain exclusion covers the named
+        domain and every subdomain. Adding the same kind and value twice answers 200 with
+        `created: false` and keeps the first reason. Requires `settings:manage`.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewExclusion" }
+      responses:
+        "201":
+          description: The exclusion is new.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExclusionResult" }
+        "200":
+          description: The firm already excluded this kind and value; nothing changed.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExclusionResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "500": { $ref: "#/components/responses/Internal" }
+  /v1/exclusions/{kind}/{value}:
+    delete:
+      tags: [exclusions]
+      operationId: removeExclusion
+      summary: Stop excluding a domain, client or matter
+      description: |
+        Removes the exclusion. A domain value is canonicalised before it is looked up, so the case
+        and a trailing dot do not matter. Removing an exclusion does not restore signals dropped
+        while it was in force. Requires `settings:manage`.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/ExclusionKind" }
+        - name: value
+          in: path
+          required: true
+          description: The value as configured; domains ignore case and a trailing dot.
+          schema: { type: string, minLength: 1, maxLength: 320 }
+      responses:
+        "204":
+          description: Removed.
+          headers:
+            Cache-Control:
+              description: Always `no-store`.
+              schema: { type: string, const: "no-store" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: The firm has no such exclusion.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "500": { $ref: "#/components/responses/Internal" }
 components:
   securitySchemes:
@@ -244,7 +364,55 @@ components:
           description: The event's canonical id, echoed so a sender can record what the service kept.
         created:
           type: boolean
-          description: True when this delivery stored the event; false when it was already stored.
+          description: True when this delivery stored the event; false when it was already stored or the firm excludes the signal.
+    ExclusionKind:
+      type: string
+      enum: [domain, client, matter]
+      description: What is excluded. A domain is enforced at capture; client and matter are enforced when attribution exists (P3).
+    Exclusion:
+      type: object
+      required: [kind, value, createdAt]
+      properties:
+        kind: { $ref: "#/components/schemas/ExclusionKind" }
+        value:
+          type: string
+          description: The canonical value. Domains are lower-case with no trailing dot.
+        reason:
+          type: string
+          maxLength: 500
+          description: An optional note from the person who configured it.
+        createdAt: { type: string, format: date-time }
+    NewExclusion:
+      type: object
+      required: [kind, value]
+      additionalProperties: false
+      properties:
+        kind: { $ref: "#/components/schemas/ExclusionKind" }
+        value:
+          type: string
+          minLength: 1
+          maxLength: 253
+          description: A domain (case-insensitive, subdomains included) or a client or matter identifier of at most 128 characters.
+        reason:
+          type: string
+          maxLength: 500
+          description: An optional note, plain text only.
+    ExclusionList:
+      type: object
+      required: [exclusions]
+      properties:
+        exclusions:
+          type: array
+          items: { $ref: "#/components/schemas/Exclusion" }
+    ExclusionResult:
+      type: object
+      required: [kind, value, created]
+      properties:
+        kind: { $ref: "#/components/schemas/ExclusionKind" }
+        value: { type: string }
+        created:
+          type: boolean
+          description: True when this call added the exclusion; false when it was already there.
     ManualEntry:
       type: object
       description: What a person submits for quick capture. The server derives the event.
@@ -292,7 +460,7 @@ components:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }
     Forbidden:
-      description: A valid token of the wrong kind, one without `capture:write`, or an event whose actor is not the caller.
+      description: A valid token of the wrong kind, one without the permission the route needs (`capture:write` for ingest, `settings:manage` for exclusions), or an event whose actor is not the caller.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

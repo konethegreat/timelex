@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | ✅ P1-04 part a: authentication and routing to identity. ✅ Part b: per-firm rate limits, request metering and MCP header routing. ✅ 0.4.0: the five vault secrets routes. ✅ 0.5.0: manual quick capture (26 unit, 2 contract, 29 stub-upstream and 9 end-to-end tests) |
+| **Status** | ✅ P1-04 part a: authentication and routing to identity. ✅ Part b: per-firm rate limits, request metering and MCP header routing. ✅ 0.4.0: the five vault secrets routes. ✅ 0.5.0: manual quick capture. ✅ 0.6.0: privacy exclusions (26 unit, 2 contract, 31 stub-upstream and 9 end-to-end tests) |
 | **Language** | Rust (axum, reqwest) |
 | **Phase** | 1 |
 | **Owns data** | none (config only; usage totals are in memory) |
@@ -17,6 +17,7 @@ Edge of the platform. One front door: it authenticates the caller, then routes t
 - `POST /v1/tenants` (operator key), `POST /v1/api-keys`, `POST /v1/api-keys/{keyId}/revoke` (tenant API key): checked, then forwarded to identity.
 - `GET /v1/secrets`, `PUT /v1/secrets/{kind}`, `DELETE /v1/secrets/{id}`, `POST /v1/secrets/{id}/test`, `POST /v1/secrets/{id}/rotate` (tenant API key): forwarded to the vault with a token minted for **its** audience. The vault enforces `settings:manage`; the gateway validates kinds and UUIDs and forwards nothing else. No response carries a value.
 - `POST /v1/capture/entries` (tenant API key): forwarded to the capture service's private `POST /v1/entries` with the body unchanged. `GET /capture` serves the self-contained mobile quick-capture page on the same origin, under a strict CSP (`default-src 'none'`, inline style and script only, `connect-src 'self'`, no framing), `nosniff`, `no-referrer` and `no-store`; the API key stays in page memory and never enters web storage.
+- `GET`/`POST /v1/privacy/exclusions` and `DELETE /v1/privacy/exclusions/{kind}/{value}` (tenant API key): forwarded to the capture service's `/v1/exclusions` with a token for **its** audience. Capture enforces `settings:manage`. The gateway refuses an unknown kind or a value with characters outside a conservative allowlist before calling capture; the body of an add is forwarded unchanged.
 - Tenant calls: asks `identity.authenticate` on **every** request (no cache, so revocation is immediate), then forwards with a 30-second EdDSA token carrying tenant, user, key and permissions.
 - Operator calls: the bearer's SHA-256 is compared in constant time with the configured hash(es); forwards with an operator token.
 - Builds a **new** request to the service: no client header, query string or API key is forwarded (tested with an exact header allowlist). Only the list route's `includeRevoked` is forwarded, and only in canonical form.
@@ -30,7 +31,7 @@ Edge of the platform. One front door: it authenticates the caller, then routes t
 The outward MCP aggregate (listing and `tools/list` across services), OIDC, traceparent propagation, idempotency keys, retries, a shared rate-limit store. Limits cannot protect identity from invalid-key floods because authentication comes first (ADR-0013, known gap).
 
 ## Contract
-[`contracts/openapi/gateway.v1.yaml`](../../contracts/openapi/gateway.v1.yaml) (0.5.0). The internal `/internal/usage` endpoint is deliberately not in the tenant-facing contract.
+[`contracts/openapi/gateway.v1.yaml`](../../contracts/openapi/gateway.v1.yaml) (0.6.0). The internal `/internal/usage` endpoint is deliberately not in the tenant-facing contract.
 
 ## Configuration (environment)
 `TIMELEX_GATEWAY_SIGNING_KEY`, `TIMELEX_GATEWAY_KEY_ID` (default `k1`), `TIMELEX_OPERATOR_KEY_SHA256`, `TIMELEX_SERVICE_URLS` (default `identity=http://127.0.0.1:8081`; `identity` is required, `vault=http://127.0.0.1:8082` turns on the secrets routes, and `capture=http://127.0.0.1:8084` turns on quick capture), `TIMELEX_RATE_LIMIT_PER_MINUTE` (default 600), `TIMELEX_RATE_LIMIT_BURST` (default 120), `TIMELEX_GATEWAY_ADDR` (default `127.0.0.1:8088`), `TIMELEX_GATEWAY_INTERNAL_ADDR` (default `127.0.0.1:8089`; a non-loopback address logs a warning). It refuses to start without the first and third, and on a malformed value. Never commit values.

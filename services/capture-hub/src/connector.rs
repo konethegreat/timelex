@@ -75,6 +75,8 @@ pub struct RunReport {
     pub pages: usize,
     pub created: usize,
     pub existing: usize,
+    /// Signals the firm excludes. The cursor still moves past them.
+    pub excluded: usize,
 }
 
 /// Why a run did not finish.
@@ -189,6 +191,7 @@ impl Runner {
             pages: 0,
             created: 0,
             existing: 0,
+            excluded: 0,
         };
         loop {
             let used = cursor.clone();
@@ -209,6 +212,7 @@ impl Runner {
             report.pages += 1;
             report.created += outcome.created;
             report.existing += outcome.existing;
+            report.excluded += outcome.excluded;
 
             let Some(next) = page.next else { break };
             if used.as_deref() == Some(next.as_str()) {

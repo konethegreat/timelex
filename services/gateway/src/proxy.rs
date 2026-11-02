@@ -15,7 +15,7 @@ use axum::body::{to_bytes, Body, Bytes};
 use axum::extract::{Path, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
@@ -92,6 +92,8 @@ pub fn routes(state: GatewayState) -> Router {
         .route("/v1/secrets/{id}/test", post(test_secret))
         .route("/v1/secrets/{id}/rotate", post(rotate_secret))
         .route("/v1/capture/entries", post(capture_entry))
+        .route("/v1/privacy/exclusions", get(list_exclusions).post(add_exclusion))
+        .route("/v1/privacy/exclusions/{kind}/{value}", delete(remove_exclusion))
         .route("/mcp", post(mcp))
         .with_state(state)
 }
@@ -655,6 +657,73 @@ async fn capture_entry(State(s): State<GatewayState>, req: Request) -> Response 
         req,
     )
     .await
+}
+
+/// `GET /v1/privacy/exclusions`: the firm's exclusions. The capture service enforces
+/// `settings:manage`.
+async fn list_exclusions(State(s): State<GatewayState>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "privacy.exclusions.list",
+            service: "capture",
+            method: Method::GET,
+            path: Some("/v1/exclusions".into()),
+            invalid: "the request is not valid",
+        },
+        req,
+    )
+    .await
+}
+
+/// `POST /v1/privacy/exclusions`: configure an exclusion. The body is forwarded unchanged.
+async fn add_exclusion(State(s): State<GatewayState>, req: Request) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "privacy.exclusions.add",
+            service: "capture",
+            method: Method::POST,
+            path: Some("/v1/exclusions".into()),
+            invalid: "the request is not valid",
+        },
+        req,
+    )
+    .await
+}
+
+/// `DELETE /v1/privacy/exclusions/{kind}/{value}`: stop excluding. Only a known kind and a
+/// URL-safe value reach the service's URL.
+async fn remove_exclusion(
+    State(s): State<GatewayState>,
+    Path((kind, value)): Path<(String, String)>,
+    req: Request,
+) -> Response {
+    handle(
+        s,
+        Who::Tenant,
+        Target {
+            label: "privacy.exclusions.remove",
+            service: "capture",
+            method: Method::DELETE,
+            path: exclusion_path(&kind, &value),
+            invalid: "kind must be domain, client or matter and the value must be a name",
+        },
+        req,
+    )
+    .await
+}
+
+fn exclusion_path(kind: &str, value: &str) -> Option<String> {
+    let kind_ok = matches!(kind, "domain" | "client" | "matter");
+    let value_ok = !value.is_empty()
+        && value.len() <= 320
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b':' | b'@'));
+    (kind_ok && value_ok).then(|| format!("/v1/exclusions/{kind}/{value}"))
 }
 
 async fn list_secrets(State(s): State<GatewayState>, req: Request) -> Response {
