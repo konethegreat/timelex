@@ -20,6 +20,8 @@ The **consented real corpus** never lives in this repository. It is stored priva
 
 What it deliberately tests: hard keys (matter references), client-only signals that are ambiguous across open matters, closed matters that must not auto-post, excluded domains that must never be stored, internal and newsletter signals that are stored but not billable, and metadata-only privacy flags everywhere. What it does not: message bodies (content-dependent stages), assignment history, or any real firm. Those arrive with P3-05/P3-06 and the P3-02 protocol.
 
+The corpus is also consumed outside Python: [`timelex-segmentation`](../crates/timelex-segmentation) reads `synthetic/corpus/events.json` in its Rust tests and segments all 220 events per actor ([P3-03](../docs/TASKS.md), [ADR-0026](../docs/adr/0026-deterministic-segmentation.md)), so an event-contract change or a segmentation rule change fails in both languages.
+
 ## Metrics (reported per release)
 | Metric | Meaning | Gate A target (proposed) |
 |---|---|---|
