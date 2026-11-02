@@ -66,8 +66,9 @@ metadata-only by construction, not by a later filter.
 `GET /capture` returns one self-contained HTML page embedded in the gateway binary. It posts to
 `/v1/capture/entries` on the same origin, so no CORS policy is needed and no second deployable is
 added (Phase 2 allows four). The page loads no third-party asset; a Content Security Policy allows
-inline style and script only, forbids framing and sets `form-action 'none'`. The API key is kept in
-`sessionStorage`, never `localStorage`, and never appears in a URL, a log or the page's markup.
+inline style and script only, forbids framing and sets `form-action 'none'`. The API key is held in the
+page's memory while it is open, never in `localStorage` or `sessionStorage`, never in a URL or a cookie,
+and never in a log or the page's markup. A reload asks for the key again.
 
 The page is intentionally small: three kinds, two times, one description, one button. A richer client
 will replace it without changing the API.

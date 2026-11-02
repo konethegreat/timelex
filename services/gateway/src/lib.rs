@@ -172,6 +172,8 @@ mod tests {
             String::from_utf8(response.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
         assert!(text.contains("Quick capture"));
         assert!(text.contains("/v1/capture/entries"));
+        assert!(!text.contains("localStorage"), "the key is never persisted");
+        assert!(!text.contains("sessionStorage"), "the key is never persisted");
         assert!(!text.contains('\u{2014}'), "UI copy uses no em dashes");
     }
 }

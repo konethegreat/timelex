@@ -199,7 +199,7 @@
     <summary>Connection</summary>
     <label class="field" for="key">API key</label>
     <input id="key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="tlx_...">
-    <p class="hint">Kept in this browser tab only. Closing the tab forgets it.</p>
+    <p class="hint">Kept in this page while it is open. A reload forgets it.</p>
     <button id="forget" class="quiet" type="button">Forget key</button>
   </details>
 
@@ -219,18 +219,8 @@
   var connection = document.getElementById('connection');
   var result = document.getElementById('result');
   var save = document.getElementById('save');
-  var STORE = 'timelex.quickCapture.key';
   var pending = { signature: null, id: null };
 
-  function readKey() {
-    try { return sessionStorage.getItem(STORE) || ''; } catch (e) { return ''; }
-  }
-  function keepKey(value) {
-    try { sessionStorage.setItem(STORE, value); } catch (e) { /* private mode */ }
-  }
-  function forgetKey() {
-    try { sessionStorage.removeItem(STORE); } catch (e) { /* private mode */ }
-  }
   function pad(n) { return String(n).padStart(2, '0'); }
   function toInput(date) {
     return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
@@ -282,7 +272,6 @@
       say('Enter your API key under Connection.', 'error');
       return;
     }
-    keepKey(secret);
 
     var chosen = form.querySelector('input[name="kind"]:checked');
     var kind = chosen ? chosen.value : 'manual_entry';
@@ -316,6 +305,7 @@
         say(already ? 'Already saved. Nothing changed.' : 'Saved ' + span(began, finished) + ' of work.', 'ok');
         pending = { signature: null, id: null };
         description.value = '';
+        connection.open = false;
         updateCount();
         setWindow();
       } else if (response.status === 401) {
@@ -333,18 +323,12 @@
   });
 
   document.getElementById('forget').addEventListener('click', function () {
-    forgetKey();
     key.value = '';
     key.focus();
-    say('Key forgotten. It has to be entered again.', '');
+    say('Key cleared. Enter it again to save.', '');
   });
   description.addEventListener('input', updateCount);
 
-  var remembered = readKey();
-  if (remembered) {
-    key.value = remembered;
-    connection.open = false;
-  }
   setWindow();
   updateCount();
 })();
