@@ -4,7 +4,72 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-02 (latest): P2-10 — a firm can read and export what this build does with its data
+## 2026-11-02 (latest): P3-01 — a measured pipeline needs a corpus before it needs a model
+
+**Trigger:** Gate A is a measured claim, and the consented real corpus cannot be the first source: it
+waits on the P3-02 POPIA protocol, is private and cannot enter CI. The synthetic gold set is the long
+pole for the gate, and starting it late would leave attribution and segmentation with nothing honest
+to regress against. The redaction worker was the other candidate, but no connector produces content
+yet, so a queue and container would be built against an imagined producer.
+
+**Done**
+- [`eval/synthetic`](../eval/synthetic) is a Python package that builds one fictional firm from a
+  seed: 6 users, 8 clients, 24 matters (2 closed), 50 mail threads, 38 meetings and 220 activity
+  events across 20 business days, plus internal mail, newsletters, excluded-domain mail and meetings,
+  desktop document work and manual calls. Every address uses `.example` or `.test`.
+- Output is canonical JSON (sorted keys, two-space indent, LF) with a manifest of the seed, generator
+  version, counts and per-file SHA-256 and byte length. `generate` writes `firm.json`, `threads.json`,
+  `calendar.json`, `events.json`, `labels.json` and `manifest.json`; `check` regenerates in memory
+  and reports a missing, unexpected or differing file.
+- Events validate against the `1.0` activity-event schema and carry canonical ids from the documented
+  length-prefixed layout. [`ids.py`](../eval/synthetic/src/timelex_goldset/ids.py) is pinned to the
+  same golden value as `timelex-types`, so Python and Rust cannot drift silently. Every mail and
+  calendar event names the message or meeting it came from, in both directions.
+- Labels are separate from observations and state `expectedStorage`, `expectedOutcome`, client,
+  matter, billability, evidence and every honest candidate matter. The corpus contains 109
+  `auto_post`, 82 `review` (70 ambiguous across open matters, plus closed-matter signals), 17
+  `not_billable` and 12 `excluded` events. Excluded-domain signals are present because a connector
+  would see them, and labelled so capture must drop them. Every event is metadata-only.
+- [ADR-0025](adr/0025-synthetic-gold-set.md) records the determinism, synthetic-only and
+  label-first choices and their limits. [`.gitattributes`](../.gitattributes) pins the corpus to LF.
+  CI gains a gold-set job running ruff, pytest and the drift check. TASKS, ARCHITECTURE, INDEX,
+  [`eval/README.md`](../eval/README.md), the root README and the package README are updated.
+
+**Verification**
+- 29 tests pass: canonical id and boundary shift; sub-seconds and offsets name the same instant; a
+  naive datetime is refused; same seed gives identical bytes; different seed changes the tenant and
+  every id; every event validates against the schema; every id recomputes; intervals are positive and
+  capture follows the end; labels cover every event once and in order; threads and meetings are
+  referentially complete; excluded domains are never labelled stored; candidate sets are honest and
+  client-only signals list every open matter; closed matters expect review; unassigned signals are
+  stored but not billable; addresses stay on reserved domains; no credential-shaped text; the
+  committed corpus matches the generator; the manifest digests, sizes and all counters match; and
+  tampering or a missing file is reported.
+- CPython 3.12 is pinned in `eval/synthetic/.python-version` and `uv sync --locked` is used in CI,
+  because the standard library guarantees the `random()` stream across versions but not the
+  higher-level helpers the generator uses.
+- `ruff check` and `ruff format --check` pass; `python -m timelex_goldset check --corpus corpus`
+  prints `corpus is current`. The corpus is 220 events across six files, about 380 KB in total.
+- Docs links are checked separately below.
+
+**Decisions and why**
+- **Deterministic and committed, not generated per test run.** A committed corpus with a manifest
+  gives a reviewable diff and a CI check; a random fixture would hide changes and failures.
+- **Labels separate from observations.** A label can say "drop this", "this is ambiguous" or "this
+  is stored but not billable", which a single correct-matter field cannot express.
+- **Real contract, real ids.** The corpus uses the activity-event schema and the canonical id, so it
+  rehearses the capture path instead of a parallel test shape.
+- **Excluded signals are included.** Omitting them would make it impossible to prove capture drops
+  them; the label and README state the rule so a harness cannot mistake them for stored work.
+- **No bodies yet.** Content is blocked behind the redaction path, so the corpus measures metadata
+  stages honestly and the `history` evidence is reserved rather than faked.
+
+**Next:** P3-03 segmentation and P3-04 minimal matters are the next unblocked build tasks and the
+natural consumers of this corpus. P3-11 will add the harness that applies `expectedStorage` and
+scores the pipeline. The redaction worker queue and container remain the second half of P2-07, best
+started when a connector can produce content. P2-03 still needs a real Microsoft 365 test tenant.
+
+## 2026-11-02: P2-10 — a firm can read and export what this build does with its data
 
 **Trigger:** ADR-0007 point 7 requires every tenant to have an exportable record of what data goes to
 which processor for the firm's POPIA documentation. P2-07 also promised that adding an exclusion would

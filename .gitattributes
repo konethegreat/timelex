@@ -5,3 +5,5 @@ Dockerfile text eol=lf
 # Migration runners checksum the file bytes. A CRLF checkout on Windows would look like an edit
 # and refuse an already-applied migration.
 *.sql text eol=lf
+# The gold set is compared byte for byte. A CRLF checkout would look like generator drift.
+eval/synthetic/corpus/*.json text eol=lf

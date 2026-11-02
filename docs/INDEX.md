@@ -61,5 +61,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0022](adr/0022-manual-quick-capture.md) | Manual quick capture: an entry becomes an activity event | Accepted |
 | [0023](adr/0023-privacy-exclusions.md) | Privacy exclusions are enforced before an event exists | Accepted |
 | [0024](adr/0024-data-flow-register-and-disclosure.md) | Disclosure is a versioned register, served as it is | Accepted |
+| [0025](adr/0025-synthetic-gold-set.md) | The synthetic gold set is deterministic, public and label-first | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

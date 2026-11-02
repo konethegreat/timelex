@@ -1,0 +1,342 @@
+{
+  "clients": [
+    {
+      "clientId": "cl_92c352e5b3f9b6fc",
+      "domain": "meridian.example",
+      "name": "Meridian Logistics"
+    },
+    {
+      "clientId": "cl_4d9599f93023d376",
+      "domain": "kalahari.example",
+      "name": "Kalahari Mining"
+    },
+    {
+      "clientId": "cl_7b32e6be24076522",
+      "domain": "capepoint.example",
+      "name": "Cape Point Retail"
+    },
+    {
+      "clientId": "cl_6eadac401d046c0d",
+      "domain": "highveld.example",
+      "name": "Highveld Energy"
+    },
+    {
+      "clientId": "cl_ba9b1bc5cc1e6458",
+      "domain": "durbanmarine.example",
+      "name": "Durban Marine"
+    },
+    {
+      "clientId": "cl_d293f1197c84f076",
+      "domain": "karoo-agri.example",
+      "name": "Karoo Agri"
+    },
+    {
+      "clientId": "cl_cdc853dc1232aa94",
+      "domain": "sandtonfintech.example",
+      "name": "Sandton Fintech"
+    },
+    {
+      "clientId": "cl_7cb4f041a3dab9d9",
+      "domain": "pretoriahealth.example",
+      "name": "Pretoria Health"
+    }
+  ],
+  "firm": {
+    "domain": "bergman-dlamini.example",
+    "name": "Bergman & Dlamini Attorneys"
+  },
+  "matters": [
+    {
+      "clientId": "cl_92c352e5b3f9b6fc",
+      "matterId": "mt_f5909ad33820d983",
+      "practiceArea": "Corporate",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0101",
+      "status": "open",
+      "title": "Shareholder agreement review"
+    },
+    {
+      "clientId": "cl_92c352e5b3f9b6fc",
+      "matterId": "mt_76d36b2527ae760a",
+      "practiceArea": "Litigation",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0102",
+      "status": "open",
+      "title": "Commercial lease renewal"
+    },
+    {
+      "clientId": "cl_92c352e5b3f9b6fc",
+      "matterId": "mt_771ecdbc2a1e6742",
+      "practiceArea": "Property",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0103",
+      "status": "open",
+      "title": "Mining right transfer"
+    },
+    {
+      "clientId": "cl_4d9599f93023d376",
+      "matterId": "mt_b18d13206ea80571",
+      "practiceArea": "Employment",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0104",
+      "status": "open",
+      "title": "Employment contract review"
+    },
+    {
+      "clientId": "cl_4d9599f93023d376",
+      "matterId": "mt_a28622c0d070386b",
+      "practiceArea": "Commercial",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0105",
+      "status": "open",
+      "title": "Data protection audit"
+    },
+    {
+      "clientId": "cl_4d9599f93023d376",
+      "matterId": "mt_70ed9ffd64e254d1",
+      "practiceArea": "Regulatory",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0106",
+      "status": "open",
+      "title": "Trademark opposition"
+    },
+    {
+      "clientId": "cl_7b32e6be24076522",
+      "matterId": "mt_faf3142681ce29ef",
+      "practiceArea": "Corporate",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0107",
+      "status": "open",
+      "title": "Property transfer"
+    },
+    {
+      "clientId": "cl_7b32e6be24076522",
+      "matterId": "mt_de055c0a2f4f44f0",
+      "practiceArea": "Litigation",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0108",
+      "status": "closed",
+      "title": "Debt recovery"
+    },
+    {
+      "clientId": "cl_7b32e6be24076522",
+      "matterId": "mt_1705835fb8b3f4af",
+      "practiceArea": "Property",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0109",
+      "status": "open",
+      "title": "B-BBEE verification"
+    },
+    {
+      "clientId": "cl_6eadac401d046c0d",
+      "matterId": "mt_51caf0d9c8507783",
+      "practiceArea": "Employment",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0110",
+      "status": "open",
+      "title": "Supplier agreement"
+    },
+    {
+      "clientId": "cl_6eadac401d046c0d",
+      "matterId": "mt_11224ca3a1cb2ce0",
+      "practiceArea": "Commercial",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0111",
+      "status": "open",
+      "title": "Construction dispute"
+    },
+    {
+      "clientId": "cl_6eadac401d046c0d",
+      "matterId": "mt_c5ab11b920c56a66",
+      "practiceArea": "Regulatory",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0112",
+      "status": "open",
+      "title": "Loan facility review"
+    },
+    {
+      "clientId": "cl_ba9b1bc5cc1e6458",
+      "matterId": "mt_383abc39df78912e",
+      "practiceArea": "Corporate",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0113",
+      "status": "open",
+      "title": "Shareholder agreement review"
+    },
+    {
+      "clientId": "cl_ba9b1bc5cc1e6458",
+      "matterId": "mt_61f8df0701f55c22",
+      "practiceArea": "Litigation",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0114",
+      "status": "open",
+      "title": "Commercial lease renewal"
+    },
+    {
+      "clientId": "cl_ba9b1bc5cc1e6458",
+      "matterId": "mt_e72fd108b54916db",
+      "practiceArea": "Property",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0115",
+      "status": "open",
+      "title": "Mining right transfer"
+    },
+    {
+      "clientId": "cl_d293f1197c84f076",
+      "matterId": "mt_7082fb3bf09157bd",
+      "practiceArea": "Employment",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0116",
+      "status": "open",
+      "title": "Employment contract review"
+    },
+    {
+      "clientId": "cl_d293f1197c84f076",
+      "matterId": "mt_3233921e27601db6",
+      "practiceArea": "Commercial",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0117",
+      "status": "open",
+      "title": "Data protection audit"
+    },
+    {
+      "clientId": "cl_d293f1197c84f076",
+      "matterId": "mt_382843fce7cc57d8",
+      "practiceArea": "Regulatory",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0118",
+      "status": "open",
+      "title": "Trademark opposition"
+    },
+    {
+      "clientId": "cl_cdc853dc1232aa94",
+      "matterId": "mt_3af3e3eb873c0e55",
+      "practiceArea": "Corporate",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0119",
+      "status": "open",
+      "title": "Property transfer"
+    },
+    {
+      "clientId": "cl_cdc853dc1232aa94",
+      "matterId": "mt_8a1cdb422fec98a0",
+      "practiceArea": "Litigation",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0120",
+      "status": "closed",
+      "title": "Debt recovery"
+    },
+    {
+      "clientId": "cl_cdc853dc1232aa94",
+      "matterId": "mt_10f487619c0edad0",
+      "practiceArea": "Property",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0121",
+      "status": "open",
+      "title": "B-BBEE verification"
+    },
+    {
+      "clientId": "cl_7cb4f041a3dab9d9",
+      "matterId": "mt_fabdad85c10f0139",
+      "practiceArea": "Employment",
+      "rateCentsPerHour": 280000,
+      "reference": "M-2026-0122",
+      "status": "open",
+      "title": "Supplier agreement"
+    },
+    {
+      "clientId": "cl_7cb4f041a3dab9d9",
+      "matterId": "mt_b8853098c05faec0",
+      "practiceArea": "Commercial",
+      "rateCentsPerHour": 195000,
+      "reference": "M-2026-0123",
+      "status": "open",
+      "title": "Construction dispute"
+    },
+    {
+      "clientId": "cl_7cb4f041a3dab9d9",
+      "matterId": "mt_98bbe85b86735f0c",
+      "practiceArea": "Regulatory",
+      "rateCentsPerHour": 125000,
+      "reference": "M-2026-0124",
+      "status": "open",
+      "title": "Loan facility review"
+    }
+  ],
+  "policy": {
+    "businessDays": [
+      "2026-09-07",
+      "2026-09-08",
+      "2026-09-09",
+      "2026-09-10",
+      "2026-09-11",
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-21",
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02"
+    ],
+    "exclusions": [
+      {
+        "kind": "domain",
+        "reason": "Opposing party in active litigation",
+        "value": "adverse.example.test"
+      },
+      {
+        "kind": "domain",
+        "reason": "Personal mail provider excluded by firm policy",
+        "value": "personal.example.test"
+      }
+    ]
+  },
+  "schema": "timelex.gold-set.firm.v1",
+  "tenantId": "tn_gb911f19670423736",
+  "users": [
+    {
+      "email": "a.bergman@bergman-dlamini.example",
+      "name": "Adri Bergman",
+      "role": "partner",
+      "userId": "us_802c59fbcce35559"
+    },
+    {
+      "email": "t.dlamini@bergman-dlamini.example",
+      "name": "Thabo Dlamini",
+      "role": "partner",
+      "userId": "us_97ac7cf0971b6e49"
+    },
+    {
+      "email": "n.khumalo@bergman-dlamini.example",
+      "name": "Naledi Khumalo",
+      "role": "associate",
+      "userId": "us_289af8d952fbd92c"
+    },
+    {
+      "email": "r.pillay@bergman-dlamini.example",
+      "name": "Ravi Pillay",
+      "role": "associate",
+      "userId": "us_728b61154dba5fe7"
+    },
+    {
+      "email": "s.mokoena@bergman-dlamini.example",
+      "name": "Sipho Mokoena",
+      "role": "candidate",
+      "userId": "us_35333cee6f0f4911"
+    },
+    {
+      "email": "l.vanwyk@bergman-dlamini.example",
+      "name": "Lize van Wyk",
+      "role": "paralegal",
+      "userId": "us_a0981eba2d57f9a9"
+    }
+  ]
+}

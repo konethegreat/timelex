@@ -46,6 +46,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 | `insights` | Python | Utilisation, realisation, WIP ageing, forecasting | read models | 8 | ⬜ |
 
 Workers: [`workers/py-worker`](../workers/py-worker) (redaction ✅; OCR, embeddings, calibration planned).
+Evaluation: [`eval/synthetic`](../eval/synthetic) generates the deterministic, labelled synthetic firm ([ADR-0025](adr/0025-synthetic-gold-set.md)); the harness and red-team corpus are still planned (P3-11, P3-10).
 Clients: `packages/sdk` (typed client ✅; gateway, identity, vault and activity-event types are generated from `contracts/` by `tools/sdk-gen`), web app (Phase 4–5), Outlook add-in (Phase 4), `plugin/` (manifest ✅).
 New services start from [`tools/new-service`](../tools/new-service): it generates a workspace member with the gateway-token check, tenant transactions, `/health`, telemetry and database tests, and patches the workspace members and the Postgres bootstrap ([ADR-0017](adr/0017-new-service-generator.md)).
 Connectors for other practice systems live under `connectors/` behind a `PracticeSystemAdapter` ([ADR-0009](adr/0009-ghostpractice-interop-strategy.md)).
