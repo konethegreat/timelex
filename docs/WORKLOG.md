@@ -4,7 +4,59 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-02 (latest): P3-03 — segmentation keeps the time arithmetic deterministic
+## 2026-11-03 (latest): P3-04 — matters keep the firm's own keys
+
+**Trigger:** Attribution cannot name anything until the platform knows the firm's clients and
+matters. P3-05 measures precision against the gold set, whose labels use the firm's own `cl_…` and
+`mt_…` identifiers, so the records had to accept those identifiers unchanged. P1-02's acceptance
+criterion for this task is import from CSV.
+
+**Done**
+- [`services/matters`](../services/matters) now owns `clients`, `matters`, `aliases` and
+  `rate_cards` in the `matters` schema, all under the standard tenant RLS policy. `clientId` and
+  `matterId` are the firm's own keys; there is no surrogate public id. A matter's reference has a
+  trimmed, lower-cased `reference_key`, unique per firm.
+- Aliases are explicit hard keys (`matter_reference`, `client_name`, `client_domain`), canonicalised
+  on the way in, unique per kind and value, with a composite foreign key keeping a matter alias in
+  the same client. The same value for the same target is idempotent; another target is a 409.
+  Creating a matter invents no aliases, so a rename cannot leave a stale key.
+- One rate card per matter (`PUT` replaces it): hourly cents, unit minutes, rounding, minimum units,
+  with the contract defaults applied when omitted.
+- CSV import for the four kinds: strict headers, at most 5 000 rows and 2 MiB, `text/csv` only, one
+  transaction, upserts by natural key, logical row numbers in errors and no cell value echoed.
+- HTTP layer with RFC 9457 problems. Reads need `time:read`; writes and imports need
+  `settings:manage`; the firm comes from the verified internal token.
+- [ADR-0027](adr/0027-matters-natural-keys-and-import.md), contract 0.1.0
+  ([`matters.v1.yaml`](../contracts/openapi/matters.v1.yaml)), service README, ARCHITECTURE, TASKS and
+  INDEX are updated. The image and dev compose now build and run the service; the dev login file
+  grants `svc_matters` LOGIN.
+
+**Verification**
+- 43 tests pass against Postgres 17: 14 domain unit tests, 13 parser tests, 11 HTTP tests (health,
+  authentication, per-route permissions, tenancy, conflicts, validation, media type, 404) and 5
+  database import tests.
+- The import tests prove a bad row rolls the whole file back, re-importing updates rather than
+  duplicates, a reference cannot arrive as two matters, another firm cannot see or attach to these
+  rows, and the gold-set firm imports completely: 8 clients, 24 matters (2 closed), 32 aliases and 24
+  rate cards, with every matter named by a label present.
+- `cargo fmt --all`, `cargo clippy -p timelex-matters-service --all-targets -- -D warnings` and the
+  full service test suite are clean. CI runs the same suite against its own Postgres service.
+
+**Decisions**
+- Natural keys rather than surrogate ids with an `externalId` map: the gold set and a practice-system
+  export both round-trip, and P3-05 needs no translation layer.
+- Explicit aliases rather than aliases invented on write: a stale hard key silently attributes work
+  to the wrong matter, which is worse than an absent one.
+- All-or-nothing import rather than skipping bad rows: a partial load leaves the firm unsure what
+  exists, and the row-numbered refusal is what makes the whole-file retry safe.
+- No gateway route and no `matter.opened`/`matter.closed` events yet. Routing is per path in the
+  gateway and belongs with the deploy that fronts the service; the events need a frozen contract and
+  a consumer.
+
+**Next:** P3-05 attribution stages 0–1 (hard keys, history) over the gold set and the segmentation
+blocks. Contacts, the conflict index, MCP tools and a public gateway route remain later increments.
+
+## 2026-11-02: P3-03 — segmentation keeps the time arithmetic deterministic
 
 **Trigger:** The gold set now exists, but attribution's first stage did not: a day of mail, meetings
 and document work is still a list of overlapping signals, not a set of intervals that can be reviewed

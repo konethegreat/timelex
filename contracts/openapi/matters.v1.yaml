@@ -1,0 +1,610 @@
+# Written by Kone Tshivhinda & Claude
+# Matters service contract v1 (draft 0.1.0). Contract-first: this file leads the code (ADR-0001).
+# Design: ADR-0027 (natural keys, aliases, one rate card per matter, all-or-nothing CSV import).
+openapi: 3.1.0
+info:
+  title: TimeLex Matters
+  version: 0.1.0
+  summary: Clients, matters, aliases and rate cards, with CSV import (pre-alpha).
+  description: |
+    Pre-alpha. The matters service answers three questions for a firm: **who the clients are, what
+    the matters are, and what they cost**. It owns the `matters` schema and is the source of truth
+    for the names a work signal may carry.
+
+    **The firm's own keys are the identifiers.** A client is addressed by its `clientId` and a matter
+    by its `matterId`, exactly as the firm's practice system spells them (ADR-0027). There is no
+    surrogate public id, so an export from another system round-trips and a later attribution stage
+    can map a signal to a matter without a translation table. Both are 1 to 64 characters from
+    `A-Z a-z 0-9 . _ : -`.
+
+    **References are unique, case- and space-insensitively.** A matter's `reference` is the name
+    people write on documents and in email subjects. Its canonical form (`reference_key`) is the
+    trimmed, lower-cased value, and two matters in one firm may never share it, even if they differ
+    only in case or surrounding whitespace. A second create is a 409.
+
+    **Aliases are hard keys.** `matter_reference` resolves a reference to a matter, `client_name` a
+    display name to a client, and `client_domain` an email domain to a client. Values are stored
+    canonical: trimmed and lower-cased, and a domain also loses one trailing dot. A value names
+    exactly one target per firm; the same value for the same target is idempotent, and the same value
+    for another target is a 409. Aliases are explicit: creating a matter does not invent aliases, so
+    renaming a reference cannot leave a stale resolution behind. A matter's `reference_key` is always
+    a hard key without an alias row.
+
+    **One rate card per matter.** A card states an hourly rate in whole ZAR cents, the minutes in a
+    billing unit, how a partial unit is rounded and the minimum units for a non-zero duration. Since
+    0.1.0 a matter has at most one card; `PUT` replaces it. Matter-specific discounts, client-level
+    defaults and fee arrangements are later work.
+
+    **Callers.** Only the gateway reaches this service, over a private interface, with an *internal
+    token* signed by the gateway (ADR-0012). Reads need a `principal` token with `time:read`; writes
+    and imports need `settings:manage` (a human-only permission, AUTONOMY.md). A token of the wrong
+    kind or without the permission is 403. The firm comes from the verified token, never from the
+    request; no body may name a `tenantId`.
+
+    **Import is all-or-nothing.** A CSV upload is one record kind per file, has a header row and at
+    most 5 000 data rows, and is applied in one transaction. A refused row is named by its logical row
+    number (the header is row 1; blank lines are not counted) and never echoes the value. If any row
+    is refused nothing is stored. Every row is an upsert by its natural key, so re-uploading a
+    corrected file is safe. Rows are validated by the same rules as a single request.
+
+    **Not routed by the gateway yet.** This build exposes the service on its private interface. The
+    gateway contract gains the public paths in the increment that deploys the service; until then a
+    public caller cannot reach it.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://127.0.0.1:8083
+    description: Local development (private interface; the gateway fronts this later)
+tags:
+  - name: clients
+    description: The firm's clients.
+  - name: matters
+    description: Matters under a client.
+  - name: aliases
+    description: The names a signal may carry.
+  - name: rate-cards
+    description: What a matter costs.
+  - name: import
+    description: Load a firm's records from CSV (ADR-0025 corpus, ADR-0027).
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and database reachability
+      description: Answers 200 when the service is up and can reach its database, otherwise 503. No credentials; reachable only on the private interface.
+      security: []
+      responses:
+        "200":
+          description: Up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+        "503":
+          description: The database cannot be reached.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+  /v1/clients:
+    get:
+      tags: [clients]
+      operationId: listClients
+      summary: List the firm's clients
+      description: Every client of the caller's firm, ordered by `clientId`. A firm never sees another firm's clients.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: time:read
+      responses:
+        "200":
+          description: The firm's clients.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClientList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    post:
+      tags: [clients]
+      operationId: createClient
+      summary: Create a client
+      description: |
+        Creates a client under the caller's firm and answers 201. `clientId` is the firm's own
+        identifier and must be unique within the firm; a duplicate is a 409, never an overwrite.
+        `status` defaults to `active`. Import is the way to create many at once.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewClient" }
+      responses:
+        "201":
+          description: The client was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Client" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/matters:
+    get:
+      tags: [matters]
+      operationId: listMatters
+      summary: List the firm's matters
+      description: Every matter of the caller's firm, ordered by canonical reference, optionally narrowed to one client. An unknown or malformed `clientId` is a 400.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: time:read
+      parameters:
+        - name: clientId
+          in: query
+          required: false
+          description: Return only this client's matters.
+          schema: { $ref: "#/components/schemas/Identifier" }
+      responses:
+        "200":
+          description: The firm's matters.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatterList" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    post:
+      tags: [matters]
+      operationId: createMatter
+      summary: Create a matter
+      description: |
+        Creates a matter under an existing client of the caller's firm and answers 201. The client
+        must already exist (400 otherwise). `matterId` is the firm's own identifier and must be
+        unique; `reference` must be unique once trimmed and lower-cased. Either duplicate is a 409.
+        `status` defaults to `open`; `closedOn` may not precede `openedOn`.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewMatter" }
+      responses:
+        "201":
+          description: The matter was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Matter" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/matters/{matterId}/rate-card:
+    put:
+      tags: [rate-cards]
+      operationId: putRateCard
+      summary: Set a matter's rate card
+      description: |
+        Creates or replaces the matter's one rate card and answers 200 with the stored card. An
+        unknown matter in the caller's firm is a 404. Omitted `unitMinutes`, `rounding` and
+        `minimumUnits` take the contract defaults (6, `up`, 1) rather than the previous card's values.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - name: matterId
+          in: path
+          required: true
+          description: The firm's identifier for the matter.
+          schema: { $ref: "#/components/schemas/Identifier" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewRateCard" }
+      responses:
+        "200":
+          description: The stored rate card.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateCard" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/rate-cards:
+    get:
+      tags: [rate-cards]
+      operationId: listRateCards
+      summary: List the firm's rate cards
+      description: Every rate card of the caller's firm, ordered by `matterId`. A matter without a card is absent.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: time:read
+      responses:
+        "200":
+          description: The firm's rate cards.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateCardList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/aliases:
+    get:
+      tags: [aliases]
+      operationId: listAliases
+      summary: List aliases, optionally one canonical value
+      description: |
+        Every alias of the caller's firm, or the aliases matching `kind` and, when given, the exact
+        canonical `value`. `value` requires `kind`, because a value is canonicalised per kind; without
+        it the request is a 400.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: time:read
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/AliasKind" }
+        - name: value
+          in: query
+          required: false
+          description: The canonical or raw value; it is canonicalised before matching.
+          schema: { type: string, minLength: 1, maxLength: 320 }
+      responses:
+        "200":
+          description: The matching aliases.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AliasList" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    post:
+      tags: [aliases]
+      operationId: createAlias
+      summary: Add an alias
+      description: |
+        Adds an alias and answers 201. The same canonical value for the same client and matter
+        answers 200 with the existing row, so a retry is safe. The same value for another target is a
+        409, and a referenced client or matter that does not exist in the firm is a 400.
+        `matterId` is required for `matter_reference` and forbidden for the client kinds.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewAlias" }
+      responses:
+        "201":
+          description: The alias was added.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alias" }
+        "200":
+          description: The same value already names the same target; the existing alias is returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alias" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+  /v1/import/{kind}:
+    post:
+      tags: [import]
+      operationId: importCsv
+      summary: Import one record kind from CSV
+      description: |
+        Loads `clients`, `matters`, `aliases` or `rate-cards` from a UTF-8 CSV body and answers 200
+        with the number of applied rows. The body must be `text/csv` (415 otherwise) and at most
+        2 MiB. The header row is required and matched case-insensitively; a column that is not part
+        of the kind is refused rather than ignored, and so is a missing required column.
+
+        Columns by kind:
+
+        | kind | required | optional |
+        |---|---|---|
+        | `clients` | `clientId`, `name` | `status` |
+        | `matters` | `matterId`, `clientId`, `reference`, `title` | `status`, `practiceArea`, `openedOn`, `closedOn` |
+        | `aliases` | `kind`, `value`, `clientId` | `matterId` |
+        | `rate-cards` | `matterId`, `hourlyRateCents` | `unitMinutes`, `rounding`, `minimumUnits` |
+
+        At most 5 000 data rows. Blank lines are ignored. Every row is validated by the same rules as
+        a single request and applied as an upsert by its natural key, in one transaction: a refused
+        row answers 400 with `detail` beginning `row N:` and stores nothing. Rows are numbered
+        logically: the header is row 1 and blank lines are not counted. Error details never echo a
+        cell value.
+
+        Load clients before matters, and both before aliases and rate cards, because later kinds
+        reference earlier ones.
+      security: [{ internalToken: [] }]
+      x-required-kind: principal
+      x-required-permission: settings:manage
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { type: string, enum: [clients, matters, aliases, rate-cards] }
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              description: A UTF-8 CSV file with a header row.
+          text/csv; charset=utf-8:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Every row was applied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+components:
+  securitySchemes:
+    internalToken:
+      type: http
+      scheme: bearer
+      description: A short-lived token signed by the gateway (ADR-0012, `contracts/internal-auth.md`). Never a tenant API key.
+  schemas:
+    Identifier:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[A-Za-z0-9._:-]+$"
+      description: The firm's own identifier for a client or matter.
+    AliasKind:
+      type: string
+      enum: [matter_reference, client_name, client_domain]
+      description: What a name resolves to. `matter_reference` needs a matter; the client kinds must not name one.
+    ClientStatus:
+      type: string
+      enum: [active, inactive]
+    MatterStatus:
+      type: string
+      enum: [open, closed]
+    Rounding:
+      type: string
+      enum: [up, down, nearest]
+      description: How a partial billing unit is rounded.
+    NewClient:
+      type: object
+      additionalProperties: false
+      required: [clientId, name]
+      properties:
+        clientId: { $ref: "#/components/schemas/Identifier" }
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: One line; control characters are refused.
+        status: { $ref: "#/components/schemas/ClientStatus" }
+    Client:
+      type: object
+      required: [clientId, name, status, createdAt, updatedAt]
+      properties:
+        clientId: { type: string }
+        name: { type: string }
+        status: { $ref: "#/components/schemas/ClientStatus" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClientList:
+      type: object
+      required: [clients]
+      properties:
+        clients:
+          type: array
+          items: { $ref: "#/components/schemas/Client" }
+    NewMatter:
+      type: object
+      additionalProperties: false
+      required: [matterId, clientId, reference, title]
+      properties:
+        matterId: { $ref: "#/components/schemas/Identifier" }
+        clientId: { $ref: "#/components/schemas/Identifier" }
+        reference:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The name people write on documents. Unique per firm once trimmed and lower-cased.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: One line; control characters are refused.
+        status: { $ref: "#/components/schemas/MatterStatus" }
+        practiceArea:
+          type: string
+          maxLength: 100
+          description: One line, when the firm records one.
+        openedOn:
+          type: string
+          format: date
+        closedOn:
+          type: string
+          format: date
+          description: Must not precede `openedOn`.
+    Matter:
+      type: object
+      required: [matterId, clientId, reference, title, status, createdAt, updatedAt]
+      properties:
+        matterId: { type: string }
+        clientId: { type: string }
+        reference: { type: string }
+        title: { type: string }
+        status: { $ref: "#/components/schemas/MatterStatus" }
+        practiceArea: { type: [string, "null"] }
+        openedOn: { type: [string, "null"], format: date }
+        closedOn: { type: [string, "null"], format: date }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    MatterList:
+      type: object
+      required: [matters]
+      properties:
+        matters:
+          type: array
+          items: { $ref: "#/components/schemas/Matter" }
+    NewAlias:
+      type: object
+      additionalProperties: false
+      required: [kind, value, clientId]
+      properties:
+        kind: { $ref: "#/components/schemas/AliasKind" }
+        value:
+          type: string
+          minLength: 1
+          maxLength: 320
+          description: Stored trimmed and lower-cased; a domain also loses one trailing dot.
+        clientId: { $ref: "#/components/schemas/Identifier" }
+        matterId:
+          type: string
+          description: Required for `matter_reference`, forbidden otherwise.
+    Alias:
+      type: object
+      required: [id, kind, value, clientId]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/AliasKind" }
+        value:
+          type: string
+          description: The canonical value.
+        clientId: { type: string }
+        matterId: { type: [string, "null"] }
+    AliasList:
+      type: object
+      required: [aliases]
+      properties:
+        aliases:
+          type: array
+          items: { $ref: "#/components/schemas/Alias" }
+    NewRateCard:
+      type: object
+      additionalProperties: false
+      required: [hourlyRateCents]
+      properties:
+        hourlyRateCents:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+          description: Whole ZAR cents per hour.
+        unitMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 6
+        rounding:
+          allOf: [{ $ref: "#/components/schemas/Rounding" }]
+          default: up
+        minimumUnits:
+          type: integer
+          minimum: 0
+          maximum: 60
+          default: 1
+    RateCard:
+      type: object
+      required: [matterId, hourlyRateCents, unitMinutes, rounding, minimumUnits, updatedAt]
+      properties:
+        matterId: { type: string }
+        hourlyRateCents: { type: integer }
+        unitMinutes: { type: integer }
+        rounding: { $ref: "#/components/schemas/Rounding" }
+        minimumUnits: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    RateCardList:
+      type: object
+      required: [rateCards]
+      properties:
+        rateCards:
+          type: array
+          items: { $ref: "#/components/schemas/RateCard" }
+    ImportResult:
+      type: object
+      required: [kind, rows]
+      properties:
+        kind: { type: string, enum: [clients, matters, aliases, rate-cards] }
+        rows:
+          type: integer
+          minimum: 0
+          description: The number of data rows applied by this upload (not a row count in the firm).
+    Problem:
+      description: RFC 9457 problem details (standard error body for all services).
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+  responses:
+    Invalid:
+      description: The request is not valid for this operation. `detail` never echoes a value; for an import it begins `row N:`.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unauthenticated:
+      description: The internal token is missing, expired or not signed by the gateway.
+      headers:
+        WWW-Authenticate:
+          schema: { type: string, const: Bearer }
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: The token is valid but is not a principal, or does not hold the route's permission.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: The addressed record does not exist in the caller's firm.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: A natural key already names a different record.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    TooLarge:
+      description: The body exceeds 64 KiB (JSON) or 2 MiB (CSV).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    UnsupportedMediaType:
+      description: An import body was not `text/csv`.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Unavailable:
+      description: The database cannot be reached.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }

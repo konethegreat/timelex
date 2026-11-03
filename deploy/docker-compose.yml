@@ -119,6 +119,17 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  matters-migrate:
+    <<: *timelex
+    command: ["migrate"]
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-matters-service
+      TIMELEX_MIGRATOR_DATABASE_URL: postgres://timelex_migrator@postgres:5432/timelex
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+
   identity:
     <<: *timelex
     environment:
@@ -179,6 +190,27 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  matters:
+    <<: *timelex
+    environment:
+      TIMELEX_BINARY: /usr/local/bin/timelex-matters-service
+      TIMELEX_MATTERS_ADDR: 0.0.0.0:8083
+      TIMELEX_MATTERS_DATABASE_URL: postgres://svc_matters@postgres:5432/timelex
+      TIMELEX_LOG_FORMAT: json
+      RUST_LOG: info
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+    volumes: ["keys:/keys:ro"]
+    depends_on:
+      matters-migrate:
+        condition: service_completed_successfully
+      keys:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/health"]
       interval: 5s
       timeout: 3s
       retries: 20

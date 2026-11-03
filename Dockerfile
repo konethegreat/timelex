@@ -21,11 +21,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         -p timelex-identity-service \
         -p timelex-vault-service \
         -p timelex-capture-service \
+        -p timelex-matters-service \
     && mkdir -p /out \
     && cp target/release/timelex-gateway \
           target/release/timelex-identity-service \
           target/release/timelex-vault-service \
           target/release/timelex-capture-service \
+          target/release/timelex-matters-service \
           /out/
 
 FROM debian:bookworm-slim AS services
@@ -36,6 +38,7 @@ COPY --from=builder /out/timelex-gateway /usr/local/bin/timelex-gateway
 COPY --from=builder /out/timelex-identity-service /usr/local/bin/timelex-identity-service
 COPY --from=builder /out/timelex-vault-service /usr/local/bin/timelex-vault-service
 COPY --from=builder /out/timelex-capture-service /usr/local/bin/timelex-capture-service
+COPY --from=builder /out/timelex-matters-service /usr/local/bin/timelex-matters-service
 COPY deploy/container/entrypoint.sh /usr/local/bin/entrypoint
 COPY deploy/container/generate-keys.sh /usr/local/bin/generate-keys
 RUN chmod 0755 /usr/local/bin/entrypoint /usr/local/bin/generate-keys

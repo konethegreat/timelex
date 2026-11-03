@@ -4,3 +4,4 @@
 CALL platform.provision_service('identity');
 CALL platform.provision_service('vault');
 CALL platform.provision_service('capture');
+CALL platform.provision_service('matters');
