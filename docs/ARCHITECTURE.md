@@ -39,7 +39,7 @@ Status: ✅ code exists · 🟡 specified (README + contract, no runtime) · ⬜
 | [`attribution`](../services/attribution) | Rust + Py worker | Segmentation to time blocks; matter attribution cascade; calibration | `attribution` | 3 | 🟡 segmentation core exists (P3-03, [ADR-0026](adr/0026-deterministic-segmentation.md)): deterministic grouping and clipping in [`timelex-segmentation`](../crates/timelex-segmentation); cascade, persistence and routes pending |
 | [`narrative`](../services/narrative) | Rust | Cited narratives, per-client style, number guard | `narrative` | 3 | 🟡 |
 | [`time-ledger`](../services/time-ledger) | Rust | Time entries (append-only), units/rates, autonomy policy engine, review queue, audit | `ledger` | 3–4 | 🟡 |
-| [`matters`](../services/matters) | Rust | Clients, matters, contacts, conflicts, rate cards | `matters` | 3 (min), 6 | 🟡 |
+| [`matters`](../services/matters) | Rust | Clients, matters, contacts, conflicts, rate cards | `matters` | 3 (min), 6 | ✅ minimal (P3-04, [ADR-0027](adr/0027-matters-natural-keys-and-import.md)): clients and matters under the firm's own keys, canonical unique references, explicit aliases, one rate card per matter, and all-or-nothing CSV import. Contacts, the conflict index and a gateway route pending |
 | [`billing`](../services/billing) | Rust | WIP, pro-forma, fee-note prep; calls ClearCut | `billing` | 5 | 🟡 |
 | [`trust`](../services/trust) | Rust | Trust and business ledgers, reconciliations, LPC reports | `trust` | 7 (gated) | 🟡 |
 | `docs` | Rust + Py | Document store, search, assembly (human-reviewed) | `docs` | 6 | ⬜ |

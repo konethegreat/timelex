@@ -6,3 +6,4 @@ ALTER ROLE timelex_migrator LOGIN;
 ALTER ROLE svc_identity LOGIN;
 ALTER ROLE svc_vault LOGIN;
 ALTER ROLE svc_capture LOGIN;
+ALTER ROLE svc_matters LOGIN;

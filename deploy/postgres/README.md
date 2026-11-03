@@ -14,7 +14,7 @@ One database, one **schema** and one **login role** per service. Two layers of S
 - `timelex_migrator`: owns the service schemas; not a superuser; cannot bypass row-level security.
 - `platform` schema: `current_tenant()`, `apply_tenant_rls()`, `provision_service()`, the view `tables_without_tenant_rls`, and `platform.outbox`.
 - `platform.outbox`: the one queue every service writes events to, in the same transaction as its state change. A relay claims undelivered rows and publishes them at least once; consumers dedupe on the envelope id. The `platform` schema has no tenant policy because the relay must read across firms and no runtime role bypasses row-level security.
-- For each provisioned service (today: `identity`, `vault`, `capture`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema. It may `INSERT` and `SELECT` the outbox and `UPDATE` only the delivery columns (`published_at`, `attempts`, `next_attempt_at`, `last_error`), so a producer cannot rewrite a payload or an already-published event.
+- For each provisioned service (today: `identity`, `vault`, `capture`, `matters`): a role `svc_<name>` and a schema `<name>`. The role can use only its own schema. It may `INSERT` and `SELECT` the outbox and `UPDATE` only the delivery columns (`published_at`, `attempts`, `next_attempt_at`, `last_error`), so a producer cannot rewrite a payload or an already-published event.
 
 Roles are created `NOLOGIN` and **no file in this repository contains a password**.
 
