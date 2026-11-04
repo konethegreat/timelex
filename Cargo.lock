@@ -3428,6 +3428,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-attribution-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "timelex-mcp-host",
+ "tokio",
+]
+
+[[package]]
 name = "timelex-audit"
 version = "0.1.0"
 dependencies = [
