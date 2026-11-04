@@ -4,7 +4,7 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 | | |
 |---|---|
-| **Status** | 🟡 specified; segmentation core exists |
+| **Status** | 🟡 specified; segmentation and attribution stages 0–1 exist, retrieval worker landed |
 | **Language** | Rust orchestration + `workers/py-worker` |
 | **Phase** | 3 |
 | **Owns data** | `attribution` schema: time blocks, candidate sets, decisions, calibration data |
@@ -26,6 +26,9 @@ Group events into time blocks and decide the client and matter, with evidence an
 
 ## Segmentation
 [`crates/timelex-segmentation`](../../crates/timelex-segmentation) implements the first stage as a pure library ([ADR-0026](../../docs/adr/0026-deterministic-segmentation.md)): one tenant and one actor per call, grouping by thread → document → counterparty → lone event, anchors before background work, and clipping so blocks never overlap. Persistence into the `attribution` schema, block ids and `block.created` arrive with this service.
+
+## Retrieval
+[`workers/py-worker`](../../workers/py-worker) holds the retrieval stage ([ADR-0029](../../docs/adr/0029-retrieval-local-embeddings-per-tenant-namespace.md)): deterministic local token-hash vectors, cosine search, and one namespace per tenant. The worker keeps vectors only, never text, and refuses a namespace file that names another tenant. Its `index` and `search` contract is in [`contracts/attribution`](../../contracts/attribution). The service will call it with the tenant from request context; it does not decide whether a candidate is good enough to post.
 
 ## Non-goals
 - Does not post time (that is `time-ledger` policy)

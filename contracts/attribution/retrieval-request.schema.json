@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/konethegreat/timelex/contracts/attribution/retrieval-request.schema.json",
+  "title": "RetrievalRequest",
+  "description": "One request to the worker's per-tenant retrieval index. An index request replaces or adds documents in the tenant's namespace; a search request returns the closest documents in that same namespace. Written by Kone Tshivhinda & Claude.",
+  "type": "object",
+  "required": ["schemaVersion", "tenantId", "operation"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0",
+      "description": "Contract version. A breaking change needs a new major."
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^tn_[0-9A-Za-z]{8,64}$",
+      "description": "The namespace every document and query in this request belongs to. Documents do not carry their own tenant."
+    },
+    "operation": { "enum": ["index", "search"] },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5000,
+      "description": "Documents to add or replace in this tenant's namespace. A document with an existing id replaces that entry.",
+      "items": {
+        "type": "object",
+        "required": ["documentId", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "pattern": "^[0-9A-Za-z._:-]{1,64}$",
+            "description": "Caller-owned id, typically a matter id. The worker does not interpret it."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "Text to embed. The worker stores only the resulting vector."
+          }
+        }
+      }
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "description": "Text to embed and compare with the documents in this tenant's namespace."
+    },
+    "topK": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Maximum matches to return. Defaults to 5 when omitted."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "operation": { "const": "index" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["documents"],
+        "not": { "anyOf": [{ "required": ["query"] }, { "required": ["topK"] }] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "operation": { "const": "search" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["query"],
+        "not": { "required": ["documents"] }
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1.0",
+  "tenantId": "tn_examplefirm",
+  "operation": "search",
+  "query": "lease termination notice",
+  "topK": 3
+}

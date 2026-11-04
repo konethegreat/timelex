@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/konethegreat/timelex/contracts/attribution/retrieval-response.schema.json",
+  "title": "RetrievalResponse",
+  "description": "One response from the worker's per-tenant retrieval index. It never names a tenant other than the request's. Written by Kone Tshivhinda & Claude.",
+  "type": "object",
+  "required": ["schemaVersion", "tenantId", "operation"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^tn_[0-9A-Za-z]{8,64}$",
+      "description": "Echoes the request namespace."
+    },
+    "operation": { "enum": ["index", "search"] },
+    "indexed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Number of distinct documents written to the namespace."
+    },
+    "matches": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Documents in the request tenant's namespace, best first. Only positive similarity is reported.",
+      "items": {
+        "type": "object",
+        "required": ["documentId", "score"],
+        "additionalProperties": false,
+        "properties": {
+          "documentId": { "type": "string", "pattern": "^[0-9A-Za-z._:-]{1,64}$" },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Cosine similarity of local feature-hash vectors, rounded to six decimals."
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "operation": { "const": "index" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["indexed"],
+        "not": { "required": ["matches"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "operation": { "const": "search" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["matches"],
+        "not": { "required": ["indexed"] }
+      }
+    }
+  ]
+}
