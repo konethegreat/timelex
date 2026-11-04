@@ -131,7 +131,7 @@ impl Envelope {
         let cipher = cipher(&entropy.dek)?;
         let ciphertext = cipher
             .encrypt(
-                Nonce::from_slice(&entropy.value_nonce),
+                &Nonce::try_from(entropy.value_nonce.as_slice()).map_err(|_| VaultError::Crypto)?,
                 Payload {
                     msg: plaintext,
                     aad: &binding.aad(b"value"),
@@ -162,7 +162,7 @@ impl Envelope {
         let cipher = cipher(&dek[..])?;
         let plaintext = cipher
             .decrypt(
-                Nonce::from_slice(&sealed.value_nonce),
+                &Nonce::try_from(sealed.value_nonce.as_slice()).map_err(|_| VaultError::Crypto)?,
                 Payload {
                     msg: &sealed.ciphertext,
                     aad: &binding.aad(b"value"),
@@ -199,7 +199,10 @@ impl KeyWrapper for LocalKeyWrapper {
 
     fn wrap(&self, dek: &[u8; DEK_LEN], nonce: [u8; NONCE_LEN], aad: &[u8]) -> Result<Vec<u8>, VaultError> {
         cipher(&self.master[..])?
-            .encrypt(Nonce::from_slice(&nonce), Payload { msg: dek, aad })
+            .encrypt(
+                &Nonce::try_from(nonce.as_slice()).map_err(|_| VaultError::Crypto)?,
+                Payload { msg: dek, aad },
+            )
             .map_err(|_| VaultError::Crypto)
     }
 
@@ -210,7 +213,10 @@ impl KeyWrapper for LocalKeyWrapper {
         aad: &[u8],
     ) -> Result<Zeroizing<[u8; DEK_LEN]>, VaultError> {
         let bytes = cipher(&self.master[..])?
-            .decrypt(Nonce::from_slice(&nonce), Payload { msg: wrapped, aad })
+            .decrypt(
+                &Nonce::try_from(nonce.as_slice()).map_err(|_| VaultError::Crypto)?,
+                Payload { msg: wrapped, aad },
+            )
             .map_err(|_| VaultError::Crypto)?;
         let dek = <[u8; DEK_LEN]>::try_from(bytes.as_slice()).map_err(|_| VaultError::Crypto)?;
         Ok(Zeroizing::new(dek))
