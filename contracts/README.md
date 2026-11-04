@@ -11,6 +11,7 @@ The contracts are the product's source of truth ([ADR-0001](../docs/adr/0001-ser
 | `openapi/*.yaml` | REST contracts, OpenAPI 3.1 | Gateway tests today; generated SDK and contract tests (P1-09) |
 | `mcp/tools.md` | MCP tool catalogue (draft) | Checked against Rust types from P1-08 |
 | `mcp/routes.json` | Tool-to-service routing for the gateway (ADR-0013) | `services/gateway/tests/contracts.rs` checks it against `tools.md` |
+| `attribution/retrieval-*.schema.json` | Per-tenant `index` and `search` contract for the Python retrieval worker ([ADR-0029](../docs/adr/0029-retrieval-local-embeddings-per-tenant-namespace.md)) | `cargo test -p timelex-attribution --test retrieval_contract` validates the frozen examples; pytest replays them through the worker |
 | `internal-auth.md` | How services trust the gateway (internal token), draft | ADR-0012; `crates/timelex-auth` (20 tests), gateway and identity tests |
 
 Rules: [event contracts](events/README.md) have their own versioning rules: optional additions only within a major, and readers ignore fields they do not know. For every contract, a breaking change needs a new major (`/v2`, `schemaVersion` 2.x) and a deprecation window. Never put real client data in examples; use the reserved `.test` and `.example` domains.

@@ -65,5 +65,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0026](adr/0026-deterministic-segmentation.md) | Segmentation is deterministic and never double counts a second | Accepted |
 | [0027](adr/0027-matters-natural-keys-and-import.md) | Matters keep the firm's own keys, and CSV import is all-or-nothing | Accepted |
 | [0028](adr/0028-attribution-stages-zero-one.md) | Attribution starts with exact keys, and history never outranks one | Accepted |
+| [0029](adr/0029-retrieval-local-embeddings-per-tenant-namespace.md) | Retrieval embeds locally, and every tenant gets its own namespace | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "tenantId": "tn_examplefirm",
+  "operation": "index",
+  "documents": [
+    {
+      "documentId": "mt_1",
+      "text": "Lease agreement termination notice for the Rosebank office"
+    },
+    {
+      "documentId": "mt_2",
+      "text": "Income tax return and provisional tax payment"
+    },
+    {
+      "documentId": "mt_3",
+      "text": "Employment contract review and restraint of trade"
+    }
+  ]
+}

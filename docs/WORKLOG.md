@@ -4,6 +4,48 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-11-04 (latest): P3-06 — retrieval behind a per-tenant namespace
+
+**Trigger:** Stages 0–1 leave 91 of 193 blocks for later stages. Retrieval had to exist before the
+model stages, and its acceptance was explicit: one tenant's documents must never influence another
+tenant's search.
+
+**Done**
+- New `timelex_worker.retrieval` module. Text becomes a sparse unit vector of blake2b token hashes,
+  case-folded and split on Unicode word boundaries; cosine similarity is a dot product over shared
+  buckets. No provider, network, model weights or randomness, so the same corpus gives the same
+  vectors and scores everywhere.
+- One namespace per tenant. A request names its tenant; documents never carry one. Each tenant is
+  stored at `<root>/<validated tenantId>/index.json`; the path is built only from a tenant id that
+  matches `^tn_[0-9A-Za-z]{8,64}$`, so caller text cannot traverse out of the root. A namespace file
+  whose own tenant id does not match its directory is refused instead of read.
+- The store keeps vectors only, never text. Writes go through a temporary file and an atomic replace;
+  a worker restart reloads the namespace without the source wording.
+- Versioned `index` and `search` request/response schemas in `contracts/attribution`, with frozen
+  examples in `contracts/examples`. The worker enforces the same limits as the schemas and rejects
+  unknown fields, so a caller cannot add a query to an index request, a document to a search request,
+  or a second tenant to a document.
+- Isolation tests: the same document id under two tenants returns its own vector, each tenant has its
+  own file, a copied namespace is refused, traversal ids are rejected before any write, and the
+  persisted file does not contain the source text.
+
+**Verification**
+- 73 Python tests pass: retrieval, isolation and contract handling plus the existing redaction suite.
+- 7 Rust contract tests pass: both schemas compile, every frozen example validates, each response
+  agrees with its request on tenant and operation, a document cannot smuggle a tenant, unlisted
+  fields fail, and a search score is rounded to six decimals.
+- `ruff check`, `ruff format --check`, `cargo fmt --all`, `cargo clippy --all-targets -D warnings`,
+  the docs link check and the YAML check are clean.
+
+**Not done, on purpose**
+- No claim about retrieval quality on the gold set. The corpus has no retrieval labels, and the
+  candidate threshold and precision gate belong to P3-07; inventing a threshold now would report a
+  number with no meaning.
+- No HTTP route, service wiring or mcp-host workflow. Those call this contract unchanged when the
+  attribution service and its tenant context land.
+- No real semantic embeddings. The local token-hash vectors are lexical, so paraphrases and synonyms
+  do not match; an approved provider can replace the embedding behind the same operations later.
+
 ## 2026-11-03 (latest): P3-05 — attribution stages 0–1 measured at 100% precision
 
 **Trigger:** Segmentation gave every block a time and a set of events, but not a matter. Before
