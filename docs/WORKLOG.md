@@ -4,7 +4,47 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-04 (latest): P3-06 — retrieval behind a per-tenant namespace
+## 2026-11-04 (latest): P3-07 — model stages that can only propose what they were shown
+
+**Trigger:** Retrieval can shortlist matters, but nothing chose among them. The cascade's next rungs
+had to exist with their acceptance intact: a model may abstain, the stronger rung must see why the
+weaker one failed, and no block may end silently.
+
+**Done**
+- New library crate [`timelex-attribution-service`](../services/attribution). It does not walk the
+  ladder itself: `mcp-host` already owns rungs, budgets and terminal states (ADR-0018). The crate
+  supplies the prompt, the validator and the failure report.
+- Strict reply contract. The model replies with JSON only, either `{"matterId":"<id>"}` for a
+  candidate it was offered or `{"abstain":true}`. Extra fields, prose, both fields, an empty id or an
+  invented matter are recorded as failures and escalate. They can never become a proposal.
+- Failure report. Each failed attempt is `{attempt, kind}` with kind `abstained`, `malformed` or
+  `unknown_matter`. A provider wrapper appends those sentences to the next rung's prompt, and the
+  report is returned with every call (tier, outcome, usage, Rand cost) and the total spend.
+- Terminal guarantee. Every input ends `Proposed` or `Review`; no candidates means no model call;
+  every rung abstaining is `abstained`; exhausted unusable replies are `unusable_reply`; provider,
+  budget and step stops keep the `mcp-host` reason. An outcome proposal carries the client from our
+  own candidate record, not from the reply.
+- Prompt hygiene. Candidates are deduplicated and sorted. The activity is wrapped in `<activity>` and
+  a closing tag inside it is neutralised. The system prompt states that the activity is data.
+- Two-key rule preserved. The result is a proposal, never a post; the deterministic matter checks
+  and calibration remain P3-08.
+
+**Verification**
+- 16 integration tests with a scripted provider: valid choice and cost, abstain with feedback in the
+  next prompt, malformed and unknown-matter escalation, three abstains, three unusable replies, no
+  candidates, unavailable rung skipped, key rejected, provider unreachable, zero budget, sorting and
+  deduplication, activity framing, closing-tag neutralisation, extra fields, and a terminal state for
+  every script.
+- `cargo fmt --all`, `cargo clippy -p timelex-attribution-service --all-targets -D warnings` clean.
+
+**Not done, on purpose**
+- No gold-set model measurement. There is no provider in this increment, and precision, abstain rate
+  and threshold behaviour are P3-08/P3-11 work.
+- No HTTP route, workflow wiring, persistence or review queue. A later service calls this library
+  unchanged.
+- No claim that framing stops prompt injection. P3-10 owns the adversarial corpus.
+
+## 2026-11-04: P3-06 — retrieval behind a per-tenant namespace
 
 **Trigger:** Stages 0–1 leave 91 of 193 blocks for later stages. Retrieval had to exist before the
 model stages, and its acceptance was explicit: one tenant's documents must never influence another
