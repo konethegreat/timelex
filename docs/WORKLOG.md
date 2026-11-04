@@ -4,7 +4,46 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
-## 2026-11-03 (latest): P3-04 — matters keep the firm's own keys
+## 2026-11-03 (latest): P3-05 — attribution stages 0–1 measured at 100% precision
+
+**Trigger:** Segmentation gave every block a time and a set of events, but not a matter. Before
+retrieval or model work can be judged, the deterministic stages had to exist and the gate's first
+number had to be real: how often does an exact key name the right matter?
+
+**Done**
+- New pure crate [`timelex-attribution`](../crates/timelex-attribution), no I/O, clock or floats.
+  Stage 0 matches matter references and explicit aliases as whole, case-insensitive tokens in title,
+  thread and document fields; a reference inside a longer token is not a key. Client domains resolve
+  a client and assign only when that client has exactly one open matter.
+- A thread or document reference speaks for its whole block. A counterparty block requires every
+  event to carry the same reference, because such a block can mix matters for one client; otherwise
+  it is `MixedEvidence` with every honest candidate.
+- Closed matters, conflicting hard keys, conflicting thread/document/participant history, several
+  participants from different clients, and client ambiguity all return `Review` with a sorted,
+  de-duplicated candidate list. Nothing else is guessed.
+- Stage 1 history remembers thread/document → matter and participant set → client, records only
+  assignments, and is consulted only after stage 0 abstains.
+- Gold-set test reads the committed corpus, keeps stored events, segments per actor, attributes in
+  chronological order and records assignments.
+
+**Verification**
+- 31 tests pass: 30 stage and directory tests plus the gold-set run.
+- Measurement: 208 stored events → 193 blocks (102 assigned, 71 review, 20 unattributed); 102/102
+  assignments matched the label (0 wrong matters, 0 false positives, 100% precision); 101 of 109
+  auto-post signals were assigned and 8 claimed no time through segmentation; 75 review signals
+  reached review with 0 candidate misses and 0 wrongly auto-posted; 7 content signals deferred. All
+  assignments used `matter_reference`; the corpus does not model assignment history.
+- `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, the attribution tests, the docs
+  link check and the YAML check are clean.
+
+**Not done, on purpose**
+- No service, table, review queue or gateway route. Those belong to the harness and ledger work
+  (P3-11 and Phase 4); this increment is a measured library.
+- Retrieval and model stages are P3-06 and P3-07. The 20 unattributed and 71 review blocks are their
+  input, not a defect.
+- History is exercised by unit tests only until the corpus or a real run provides prior assignments.
+
+## 2026-11-03: P3-04 — matters keep the firm's own keys
 
 **Trigger:** Attribution cannot name anything until the platform knows the firm's clients and
 matters. P3-05 measures precision against the gold set, whose labels use the firm's own `cl_…` and

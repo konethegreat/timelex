@@ -64,5 +64,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0025](adr/0025-synthetic-gold-set.md) | The synthetic gold set is deterministic, public and label-first | Accepted |
 | [0026](adr/0026-deterministic-segmentation.md) | Segmentation is deterministic and never double counts a second | Accepted |
 | [0027](adr/0027-matters-natural-keys-and-import.md) | Matters keep the firm's own keys, and CSV import is all-or-nothing | Accepted |
+| [0028](adr/0028-attribution-stages-zero-one.md) | Attribution starts with exact keys, and history never outranks one | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.
