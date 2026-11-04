@@ -3416,6 +3416,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-attribution"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "timelex-segmentation",
+ "timelex-types",
+]
+
+[[package]]
 name = "timelex-audit"
 version = "0.1.0"
 dependencies = [
