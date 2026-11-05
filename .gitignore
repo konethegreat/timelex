@@ -14,3 +14,11 @@ __pycache__
 .ruff_cache
 *.egg-info
 /deploy/.data
+
+# >>> AgentOS local agent caches (rule files stay tracked) >>>
+.claude/settings.local.json
+.qoder/settings.local.json
+CLAUDE.local.md
+AGENTS.local.md
+GEMINI.local.md
+# <<< AgentOS <<<
