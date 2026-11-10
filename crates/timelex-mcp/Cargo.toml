@@ -15,7 +15,7 @@ workspace = true
 # Exact pin on purpose: rmcp shipped 14 releases in the 12 weeks after the spec, and a change in
 # its transport defaults or errors must pass this crate's contract tests before it can merge
 # (research 08 §6).
-rmcp = { version = "=3.8.0", features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest", "reqwest"] }
+rmcp = { version = "=3.9.0", features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest", "reqwest"] }
 axum = "0.8"
 url = "2"
 zeroize = "1"
