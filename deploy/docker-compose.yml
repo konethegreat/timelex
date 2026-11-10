@@ -37,7 +37,7 @@ services:
   seaweedfs:
     # S3-compatible object storage for development. MinIO's published images no longer resolve
     # (checked 1 Nov 2026), so the local stack uses SeaweedFS on the S3 gateway port.
-    image: chrislusf/seaweedfs:4.51
+    image: chrislusf/seaweedfs:4.52
     # `mini` is the image's single-node mode: master, volume, filer and the S3 gateway (8333).
     command: ["mini", "-dir=/data"]
     # Host port 9100 because 9000 is commonly taken by another S3-compatible tool.
