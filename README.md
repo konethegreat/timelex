@@ -10,7 +10,7 @@
 
 </div>
 
-> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, a person can record a call, meeting or note by hand at `/capture`, firm-level privacy exclusions stop an excluded domain before it becomes an event, and the gateway serves a versioned data-flow register with an admin privacy page at `/privacy`, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
+> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan, platform services (`gateway`, `identity`, `vault`, `mcp-host` model loop), `capture-hub` (idempotent event ingest, manual quick-capture at `/capture`, domain privacy exclusions, and the `/privacy` data-flow register), `matters` (clients, matters, aliases, rate cards, CSV import), and Phase 3 attribution foundations (`eval/synthetic` gold set, `timelex-segmentation`, `timelex-attribution` stages 0-1, `workers/py-worker` local retrieval, and `services/attribution` model stages 3-4, P3-01 to P3-07). **No live external capture connectors (M365/Google/desktop), attribution HTTP/persistence wiring, narrative, ledger, billing, or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
 
 ## Why this exists
 
@@ -68,9 +68,9 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 contracts/    OpenAPI, JSON Schema (events), MCP tool catalogue: the source of truth
-crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP server adapter and client), timelex-telemetry (traces, metrics, redacted logs)
-services/     One folder per service; gateway, identity, vault and the mcp-host model loop are built, the rest are specified (README per service)
-workers/      Python workers (redaction now; OCR/ML later). No business rules.
+crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-db, timelex-auth, timelex-identity, timelex-vault, timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP server adapter and client), timelex-telemetry (traces, metrics, redacted logs), timelex-segmentation (deterministic time blocks, P3-03), timelex-attribution (stages 0-1 hard keys and history, P3-05)
+services/     One folder per service; gateway, identity, vault, capture-hub (P2-02/P2-07/P2-08), matters (P3-04), mcp-host (model loop), and attribution (model stages 3-4, P3-07; HTTP and persistence pending) are implemented, while narrative, time-ledger, billing, desktop-agent, and trust are specified (README per service)
+workers/      Python workers (redaction and per-tenant local retrieval index now; OCR/ML later). No business rules.
 packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)
 tools/        sdk-gen (contract → SDK types), new-service (generate a service with auth, tenancy, health and CI)
 plugin/       Claude plugin manifest
