@@ -10,7 +10,7 @@
 
 </div>
 
-> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a walking skeleton (a tested billing-unit library, shared contract types, a gateway health endpoint, a Python redaction worker and a TypeScript SDK stub). The capture hub accepts and stores activity events idempotently, a person can record a call, meeting or note by hand at `/capture`, firm-level privacy exclusions stop an excluded domain before it becomes an event, and the gateway serves a versioned data-flow register with an admin privacy page at `/privacy`, but no real connector exists yet. **No live capture, attribution, ledger, billing or trust-accounting code exists yet.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
+> ⚠️ **Pre-alpha.** Today this repository contains the research, architecture decisions, phase plan and a tested platform layer: gateway, identity, vault, the mcp-host model loop, a billing-unit library, shared contract types, a Python worker and a TypeScript SDK stub. The capture hub accepts and stores activity events idempotently, a person can record a call, meeting or note by hand at `/capture`, firm-level privacy exclusions stop an excluded domain before it becomes an event, and the gateway serves a versioned data-flow register with an admin privacy page at `/privacy`, but no real connector exists yet. The `matters` service stores clients, matters, aliases and rate cards and imports them from CSV (P3-04). The attribution building blocks exist as tested libraries: deterministic segmentation into time blocks (`timelex-segmentation`, P3-03), hard-key and history matching (`timelex-attribution`, P3-05), local per-tenant retrieval in the Python worker (P3-06) and propose-or-abstain model stages over the mcp-host ladder (`services/attribution`, P3-07), all measured against a synthetic gold set (P3-01). **Attribution has no HTTP routes, persistence or review queue yet, `matters` has no gateway route yet, and no ledger, narrative, billing or trust-accounting code exists.** See the [roadmap](docs/PHASES.md). Not legal, tax or accounting advice.
 
 ## Why this exists
 
@@ -68,14 +68,14 @@ Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```
 contracts/    OpenAPI, JSON Schema (events), MCP tool catalogue: the source of truth
-crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP server adapter and client), timelex-telemetry (traces, metrics, redacted logs)
-services/     One folder per service; gateway, identity, vault and the mcp-host model loop are built, the rest are specified (README per service)
-workers/      Python workers (redaction now; OCR/ML later). No business rules.
+crates/       Rust libraries: timelex-units (billing units), timelex-types (contract types), timelex-identity, timelex-auth, timelex-db, timelex-vault, timelex-outbox, timelex-audit (hash-chained audit), timelex-mcp (MCP server adapter and client), timelex-telemetry (traces, metrics, redacted logs), timelex-segmentation (events to time blocks), timelex-attribution (stages 0-1: hard keys and history)
+services/     One folder per service (README per service). Built and run in Compose: gateway, identity, vault, capture-hub, matters. Built as libraries: mcp-host (model loop) and attribution (model stages, no routes yet). Specified only: billing, desktop-agent, narrative, time-ledger, trust
+workers/      Python workers: redaction and local per-tenant retrieval for attribution (P3-06); OCR/ML later. No business rules.
 packages/     TypeScript SDK, with types generated from the contracts (web app and Outlook add-in arrive in Phase 4–5)
 tools/        sdk-gen (contract → SDK types), new-service (generate a service with auth, tenancy, health and CI)
 plugin/       Claude plugin manifest
 eval/         Deterministic synthetic gold set (P3-01); evaluation harness next (P3-11)
-deploy/       Docker Compose dev stack: Postgres, S3-compatible storage, gateway, identity, vault (Phase 1 ✅)
+deploy/       Docker Compose dev stack: Postgres, S3-compatible storage, gateway, identity, vault, capture-hub, matters
 docs/         Research, architecture, ADRs, phases, tasks, worklog
 ```
 
