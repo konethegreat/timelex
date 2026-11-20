@@ -5,7 +5,7 @@ Ordered single-PR tasks mapped to [docs/agentos/PHASES.md](PHASES.md) and aligne
 ## Phase 1: Research, Hygiene, and Stale-Doc Alignment
 - [x] Update `README.md` status banner and repository layout to reflect implemented `matters`, `capture-hub`, `timelex-segmentation`, `timelex-attribution`, and `services/attribution` (`P3-01` to `P3-07`).
 - [x] Audit open Dependabot PRs (#51 to #54) and verify CI workflow action pin consistency across `.github/workflows/`.
-- [ ] Research and document `services/attribution` HTTP routes, Postgres schema, and `mcp-host` wiring requirements in `docs/research/`.
+- [x] Research and document `services/attribution` HTTP routes, Postgres schema, and `mcp-host` wiring requirements in `docs/research/`.
 
 ## Phase 2: Gate A Attribution Safety, Calibration, and Evaluation
 - [ ] Implement per-tenant calibration and threshold derivation with reliability metrics on the synthetic gold set (`P3-08`).
