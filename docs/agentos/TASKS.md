@@ -8,7 +8,7 @@ Ordered single-PR tasks mapped to [docs/agentos/PHASES.md](PHASES.md) and aligne
 - [x] Research and document `services/attribution` HTTP routes, Postgres schema, and `mcp-host` wiring requirements in `docs/research/`.
 
 ## Phase 2: Gate A Attribution Safety, Calibration, and Evaluation
-- [ ] Implement per-tenant calibration and threshold derivation with reliability metrics on the synthetic gold set (`P3-08`).
+- [x] Implement per-tenant calibration and threshold derivation with reliability metrics on the synthetic gold set (`P3-08`). `timelex-calibration` fits a monotone (isotonic) map with pool-adjacent-violators, reports ECE and Brier over ten bins, and derives the lowest score that holds a 98% precision floor; the gold-set run is committed as a test (see `P3-08` in [docs/TASKS.md](../TASKS.md) and the WORKLOG entry).
 - [ ] Build the prompt-injection red-team corpus and CI tests for `services/attribution` (`P3-10`).
 - [ ] Add per-call Rand cost metering and tenant spend reporting in `services/mcp-host` and `services/attribution` (`P3-12`).
 - [ ] Implement the evaluation harness with Gate A release gates in `eval/` and wire it into `.github/workflows/ci.yml` (`P3-11`).

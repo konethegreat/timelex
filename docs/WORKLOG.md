@@ -4,6 +4,64 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 
 Append an entry at the end of every working session (newest first).
 
+## 2026-11-20: P3-08 - a score becomes a probability, and the threshold is derived, not chosen
+
+**Trigger:** the ladder (ADR-0005) compares a decision's confidence with a 98% precision floor, but
+nothing turned an evidence class into a probability or derived that threshold. Gate A needs a
+reliability diagram before autonomy can be enabled for a tenant.
+
+**Done**
+- New pure library [`timelex-calibration`](../crates/timelex-calibration) and its workspace member.
+  It takes observations of (raw score in [0, 1], correct) and nothing else: no clock, no network, no
+  model. Floats live here so `timelex-attribution` keeps its no-floats charter.
+- Monotone map: pool-adjacent-violators pools neighbouring scores while the higher score's observed
+  frequency would fall, so the calibrated probability never decreases as the score rises; a score
+  between two steps takes the lower one.
+- Reliability: ten equal-width confidence bins, expected calibration error weighted by bin
+  population, Brier score, and a text diagram with observed and predicted bars per occupied bin.
+- Threshold: the lowest score whose selected set keeps precision at or above the floor, with tied
+  scores entering or leaving together, so recall is as high as the floor allows; no score meeting
+  the floor returns none and the ladder cannot auto-execute.
+- Evidence classes as first scores: matter reference 0.95, client domain 0.90, history thread 0.85,
+  history document 0.80, history client 0.70 (ADR-0031).
+- 22 tests: 16 unit tests in the crate (pooling, monotonicity, hand-computed ECE and Brier, the top
+  bin edge, tied scores, every refusal), 5 public-API tests on an overconfident sample and 1 gold-set
+  test that segments, attributes in time order, fits, measures, derives the threshold and prints the
+  diagram.
+- [ADR-0031](../docs/adr/0031-calibrated-confidence-and-derived-thresholds.md), the `P3-08` row in
+  [docs/TASKS.md](../docs/TASKS.md), the tick in [docs/agentos/TASKS.md](TASKS.md), the `eval`
+  README and the top README updated.
+
+**Measured on the gold set (tenant `tn_gb911f19670423736`, 208 stored events, 192 labelled with a
+matter, 102 assigned blocks)**
+```
+raw        bins 10, samples 102, ECE 0.050, Brier 0.003
+           0.9-1.0 n=102  observed 1.000 [########################] predicted 0.950 [#######################.]
+calibrated bins 10, samples 102, ECE 0.000, Brier 0.000
+           0.9-1.0 n=102  observed 1.000 [########################] predicted 1.000 [########################]
+threshold  1.000 (floor 0.98): 102 of 102 events selected, 102 correct, recall 0.531, coverage 0.490
+```
+Every assigned block on this corpus matched through an explicit matter reference, so the run is a
+null calibration result: the only evidence class exercised never errs, the map corrects 0.95 to
+1.000, and the threshold collapses to that class. That is recorded rather than hidden. The
+correction itself is exercised by the overconfident and pooled samples in the crate tests, and the
+map starts doing work when history or a model stage contributes imperfect scores.
+
+**Decisions and why**
+- **Isotonic, not Platt or logistic.** No solver dependency and the fitted steps are visible; Platt
+  would add a convex optimiser for a shape nobody can inspect.
+- **Floors stay policy, not library state.** `derive_threshold` takes the floor and a tenant's
+  observations; ADR-0005 keeps the per-tenant, per-decision-type policy outside the maths.
+- **The gold-set run is a test, not a checked-in report.** The harness (P3-11) owns
+  `eval/reports`, so the diagram and the assertions live where CI already runs them, and this
+  worklog carries the rendered output.
+
+**Verified:** `cargo fmt --check`, `cargo clippy -p timelex-calibration --all-targets -j 2 -- -D
+warnings`, `cargo test -p timelex-calibration -j 2`, all clean.
+
+**Next:** P3-09 narrative and P3-10 red team. Refit when a stage returns a probability; persist the
+fitted map per tenant when the ladder is wired (Phase 4).
+
 ## 2026-11-04 (latest): P3-07 — model stages that can only propose what they were shown
 
 **Trigger:** Retrieval can shortlist matters, but nothing chose among them. The cascade's next rungs

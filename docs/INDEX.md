@@ -67,5 +67,6 @@ _Author: Kone Tshivhinda · Written by Kone Tshivhinda & Claude_
 | [0028](adr/0028-attribution-stages-zero-one.md) | Attribution starts with exact keys, and history never outranks one | Accepted |
 | [0029](adr/0029-retrieval-local-embeddings-per-tenant-namespace.md) | Retrieval embeds locally, and every tenant gets its own namespace | Accepted |
 | [0030](adr/0030-model-stages-propose-only-offered-matters.md) | A model may propose only an offered matter, and every run ends in a terminal state | Accepted |
+| [0031](adr/0031-calibrated-confidence-and-derived-thresholds.md) | Confidence is calibrated per tenant, and the ladder threshold is derived from measured precision | Accepted |
 
 Use [adr/0000-template.md](adr/0000-template.md) for new decisions.

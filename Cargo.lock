@@ -3463,6 +3463,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "timelex-calibration"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "timelex-attribution",
+ "timelex-segmentation",
+ "timelex-types",
+]
+
+[[package]]
 name = "timelex-capture-service"
 version = "0.1.0"
 dependencies = [
