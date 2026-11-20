@@ -8,7 +8,7 @@ Done when: `README.md` reflects all implemented crates and services, open Depend
 
 ## Phase 2: Gate A Attribution Safety, Calibration, and Evaluation
 Goal: Complete the remaining Phase 3 (Gate A) calibration, prompt-injection red-team, Rand cost metering, and CI evaluation gate deliverables.
-Done when: Per-tenant calibration (`P3-08`), red-team corpus tests (`P3-10`), Rand cost metering (`P3-12`), and the evaluation harness with CI release gates (`P3-11`) are implemented and passing.
+Done when: Per-tenant calibration (`P3-08`, done 20 Nov 2026), red-team corpus tests (`P3-10`), Rand cost metering (`P3-12`), and the evaluation harness with CI release gates (`P3-11`) are implemented and passing.
 
 ## Phase 3: Narrative Service and Number Guard
 Goal: Implement `services/narrative` with deterministic templates, per-client style configuration, and a strict number guard (`P3-09`).
